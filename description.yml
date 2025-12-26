@@ -1,0 +1,13 @@
+extension:
+  name: deckgl
+  description: Interactive geospatial visualization with deck.gl
+  version: 0.1.0
+  language: C++
+  build: cmake
+  license: MIT
+  maintainers:
+    - kwork9999/miniplot
+
+repo:
+  github: ykwork9999/miniplot/duckdb-deckgl
+  ref: main

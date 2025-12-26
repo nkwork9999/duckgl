@@ -1,0 +1,935 @@
+#define DUCKDB_EXTENSION_MAIN
+
+#include "deckgl_extension.hpp"
+#include "duckdb.hpp"
+#include "duckdb/common/exception.hpp"
+#include "duckdb/function/scalar_function.hpp"
+#include "duckdb/main/connection.hpp"
+#include "duckdb/main/database.hpp"
+#include "duckdb/catalog/catalog.hpp"
+#include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
+
+#include <thread>
+#include <atomic>
+#include <memory>
+
+// httplib_wrapper.hpp経由でインクルード
+#include "httplib_wrapper.hpp"
+
+namespace duckdb {
+
+// =====================================
+// HTML UIテンプレート（修正版）
+// =====================================
+
+static std::string GetDeckGLHTML() {
+    return R"HTML(
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>DeckGL - DuckDB Geospatial Visualization</title>
+    <!-- MapLibre 3.x系を使用（deck.glスクリプティングAPIとの互換性のため） -->
+    <script src="https://unpkg.com/maplibre-gl@3.6.0/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@3.6.0/dist/maplibre-gl.css" rel="stylesheet" />
+    <script src="https://unpkg.com/deck.gl@^9.0.0/dist.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        
+        /* 地図コンテナ */
+        #map {
+            position: fixed;
+            top: 0;
+            left: 350px;
+            right: 0;
+            height: 100vh;
+        }
+        
+        /* サイドバー */
+        #sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 350px;
+            height: 100vh;
+            background: #2c3e50;
+            color: #ecf0f1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            z-index: 1000;
+        }
+        
+        #header {
+            padding: 20px;
+            background: #34495e;
+            border-bottom: 2px solid #1abc9c;
+        }
+        
+        #header h1 {
+            color: #1abc9c;
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+        
+        #header p {
+            color: #95a5a6;
+            font-size: 12px;
+        }
+        
+        #content {
+            padding: 20px;
+            flex: 1;
+            overflow-y: auto;
+        }
+        
+        .section {
+            margin-bottom: 25px;
+        }
+        
+        .section h3 {
+            color: #1abc9c;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        
+        #sql-editor {
+            width: 100%;
+            height: 120px;
+            font-family: 'Courier New', monospace;
+            background: #34495e;
+            color: #ecf0f1;
+            border: 1px solid #1abc9c;
+            border-radius: 4px;
+            padding: 10px;
+            resize: vertical;
+        }
+        
+        button {
+            background: #1abc9c;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 10px;
+            transition: background 0.3s;
+        }
+        
+        button:hover {
+            background: #16a085;
+        }
+        
+        .table-item {
+            background: #34495e;
+            padding: 12px;
+            margin: 8px 0;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+        }
+        
+        .table-item:hover {
+            background: #3d5a6b;
+            border-left-color: #1abc9c;
+            transform: translateX(5px);
+        }
+        
+        .table-name {
+            font-weight: bold;
+            color: #ecf0f1;
+        }
+        
+        .table-info {
+            font-size: 12px;
+            color: #95a5a6;
+            margin-top: 4px;
+        }
+        
+        #status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 4px;
+            font-size: 12px;
+            z-index: 1001;
+        }
+        
+        .loading { color: #f39c12; }
+        .success { color: #2ecc71; }
+        .error { color: #e74c3c; }
+        
+        #result-panel {
+            position: fixed;
+            bottom: 10px;
+            left: 360px;
+            right: 10px;
+            max-height: 200px;
+            background: rgba(0,0,0,0.9);
+            color: white;
+            padding: 15px;
+            border-radius: 4px;
+            font-size: 12px;
+            overflow: auto;
+            z-index: 1001;
+            display: none;
+        }
+        
+        /* MapLibre popup z-index */
+        .maplibregl-popup {
+            z-index: 2;
+        }
+        
+        #result-panel.show {
+            display: block;
+        }
+        
+        #result-panel table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        #result-panel th, #result-panel td {
+            padding: 8px 12px;
+            text-align: left;
+            border-bottom: 1px solid #444;
+        }
+        
+        #result-panel th {
+            background: #1abc9c;
+            color: white;
+        }
+        
+        #result-panel tr:hover {
+            background: rgba(26, 188, 156, 0.2);
+        }
+        
+        .close-btn {
+            position: absolute;
+            top: 5px;
+            right: 10px;
+            background: none;
+            border: none;
+            color: #95a5a6;
+            font-size: 18px;
+            cursor: pointer;
+            margin: 0;
+            padding: 5px;
+        }
+        
+        .close-btn:hover {
+            color: #e74c3c;
+            background: none;
+        }
+    </style>
+</head>
+<body>
+    <!-- 地図コンテナ -->
+    <div id="map"></div>
+    
+    <!-- サイドバー -->
+    <div id="sidebar">
+        <div id="header">
+            <h1>🦆 DeckGL</h1>
+            <p>DuckDB Geospatial Visualization</p>
+        </div>
+        <div id="content">
+            <div class="section">
+                <h3>📝 SQL Query</h3>
+                <textarea id="sql-editor" placeholder="SELECT * FROM my_table LIMIT 100">SELECT 1 as id, 'hello' as message</textarea>
+                <button onclick="executeQuery()">▶ Execute Query</button>
+            </div>
+            
+            <div class="section">
+                <h3>📊 Tables</h3>
+                <div id="tables-list">Loading...</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- ステータスと結果パネル -->
+    <div id="status">Initializing...</div>
+    <div id="result-panel">
+        <button class="close-btn" onclick="closeResults()">×</button>
+        <div id="result-content"></div>
+    </div>
+    
+    <script>
+        let map = null;
+        let deckOverlay = null;
+        
+        function initMap() {
+            try {
+                // MapLibreで地図を直接作成
+                map = new maplibregl.Map({
+                    container: 'map',
+                    style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+                    center: [139.7, 35.7],
+                    zoom: 4
+                });
+                
+                // ナビゲーションコントロール追加
+                map.addControl(new maplibregl.NavigationControl(), 'top-right');
+                
+                // 地図読み込み完了時
+                map.on('load', function() {
+                    console.log('MapLibre map loaded');
+                    
+                    // deck.gl MapboxOverlayを追加
+                    const {MapboxOverlay} = deck;
+                    deckOverlay = new MapboxOverlay({
+                        layers: []
+                    });
+                    map.addControl(deckOverlay);
+                    
+                    setStatus('Ready', 'success');
+                });
+                
+                map.on('error', function(e) {
+                    console.error('MapLibre error:', e);
+                });
+                
+            } catch (error) {
+                console.error('Failed to initialize map:', error);
+                setStatus('Map init failed: ' + error.message, 'error');
+            }
+        }
+        
+        function setStatus(message, type = 'success') {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = type;
+        }
+        
+        function closeResults() {
+            document.getElementById('result-panel').classList.remove('show');
+        }
+        
+        function showResults(data) {
+            const panel = document.getElementById('result-panel');
+            const content = document.getElementById('result-content');
+            
+            if (!data || data.length === 0) {
+                content.innerHTML = '<p style="color: #95a5a6;">No results</p>';
+                panel.classList.add('show');
+                return;
+            }
+            
+            if (data.error) {
+                content.innerHTML = '<p style="color: #e74c3c;">Error: ' + data.error + '</p>';
+                panel.classList.add('show');
+                return;
+            }
+            
+            const columns = Object.keys(data[0]);
+            let html = '<table><thead><tr>';
+            columns.forEach(col => html += '<th>' + col + '</th>');
+            html += '</tr></thead><tbody>';
+            
+            const maxRows = Math.min(data.length, 50);
+            for (let i = 0; i < maxRows; i++) {
+                html += '<tr>';
+                columns.forEach(col => {
+                    const val = data[i][col];
+                    html += '<td>' + (val === null ? 'NULL' : val) + '</td>';
+                });
+                html += '</tr>';
+            }
+            
+            html += '</tbody></table>';
+            if (data.length > 50) {
+                html += '<p style="margin-top:10px;color:#95a5a6;">Showing 50 of ' + data.length + ' rows</p>';
+            }
+            
+            content.innerHTML = html;
+            panel.classList.add('show');
+        }
+        
+        async function loadTables() {
+            try {
+                const response = await fetch('/api/tables');
+                const data = await response.json();
+                
+                console.log('Tables:', data);
+                
+                const listDiv = document.getElementById('tables-list');
+                if (!data || data.length === 0 || data.error) {
+                    listDiv.innerHTML = '<p style="color: #95a5a6;">No tables found</p>';
+                    return;
+                }
+                
+                listDiv.innerHTML = data.map(function(t) {
+                    return '<div class="table-item" onclick="loadTableData(\'' + t.table_name + '\')">' +
+                        '<div class="table-name">' + t.table_name + '</div>' +
+                        '<div class="table-info">' + (t.table_schema || 'main') + '</div>' +
+                    '</div>';
+                }).join('');
+            } catch (error) {
+                console.error('Failed to load tables:', error);
+                document.getElementById('tables-list').innerHTML = 
+                    '<p style="color: #e74c3c;">Failed to load</p>';
+            }
+        }
+        
+        async function loadTableData(tableName) {
+            setStatus('Loading ' + tableName + '...', 'loading');
+            
+            try {
+                // まずGeoJSONを試す
+                const response = await fetch('/api/geojson/' + tableName);
+                const geojson = await response.json();
+                
+                console.log('GeoJSON response:', geojson);
+                
+                if (geojson.error || !geojson.features || geojson.features.length === 0) {
+                    // GeoJSON失敗時は通常のSELECTを実行
+                    setStatus('No geometry, loading as table...', 'loading');
+                    document.getElementById('sql-editor').value = 'SELECT * FROM ' + tableName + ' LIMIT 100';
+                    await executeQuery();
+                    return;
+                }
+                
+                // GeoJSONレイヤーを作成
+                const layer = new deck.GeoJsonLayer({
+                    id: tableName + '-layer',
+                    data: geojson,
+                    filled: true,
+                    stroked: true,
+                    getFillColor: [26, 188, 156, 180],
+                    getLineColor: [80, 80, 80, 255],
+                    getLineWidth: 2,
+                    lineWidthMinPixels: 1,
+                    getPointRadius: 100,
+                    pointRadiusMinPixels: 5,
+                    pickable: true,
+                    autoHighlight: true,
+                    highlightColor: [255, 200, 0, 200],
+                    onClick: function(info) {
+                        if (info.object) {
+                            console.log('Clicked:', info.object);
+                            alert(JSON.stringify(info.object.properties, null, 2));
+                        }
+                    }
+                });
+                
+                // MapboxOverlayにレイヤーを設定
+                if (deckOverlay) {
+                    deckOverlay.setProps({ layers: [layer] });
+                }
+                
+                // 境界にズーム（MapLibreのflyToを使用）
+                const bounds = calculateBounds(geojson);
+                if (bounds && map) {
+                    map.flyTo({
+                        center: [(bounds.minLon + bounds.maxLon) / 2, (bounds.minLat + bounds.maxLat) / 2],
+                        zoom: 10,
+                        duration: 1000
+                    });
+                }
+                
+                setStatus('Loaded ' + geojson.features.length + ' features', 'success');
+            } catch (error) {
+                console.error('Failed to load:', error);
+                setStatus('Error loading ' + tableName, 'error');
+                // フォールバック
+                document.getElementById('sql-editor').value = 'SELECT * FROM ' + tableName + ' LIMIT 100';
+                await executeQuery();
+            }
+        }
+        
+        function calculateBounds(geojson) {
+            let minLon = Infinity, maxLon = -Infinity;
+            let minLat = Infinity, maxLat = -Infinity;
+            let hasCoords = false;
+            
+            function processCoords(coords) {
+                if (typeof coords[0] === 'number') {
+                    const lon = coords[0];
+                    const lat = coords[1];
+                    if (isFinite(lon) && isFinite(lat)) {
+                        minLon = Math.min(minLon, lon);
+                        maxLon = Math.max(maxLon, lon);
+                        minLat = Math.min(minLat, lat);
+                        maxLat = Math.max(maxLat, lat);
+                        hasCoords = true;
+                    }
+                } else if (Array.isArray(coords)) {
+                    for (let i = 0; i < coords.length; i++) {
+                        processCoords(coords[i]);
+                    }
+                }
+            }
+            
+            for (let i = 0; i < geojson.features.length; i++) {
+                const feature = geojson.features[i];
+                if (feature.geometry && feature.geometry.coordinates) {
+                    processCoords(feature.geometry.coordinates);
+                }
+            }
+            
+            return hasCoords ? { minLon: minLon, maxLon: maxLon, minLat: minLat, maxLat: maxLat } : null;
+        }
+        
+        async function executeQuery() {
+            const sql = document.getElementById('sql-editor').value;
+            setStatus('Executing...', 'loading');
+            
+            try {
+                const response = await fetch('/api/query', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: sql
+                });
+                
+                const result = await response.json();
+                console.log('Query result:', result);
+                
+                if (result.error) {
+                    setStatus('Error: ' + result.error, 'error');
+                    showResults(result);
+                    return;
+                }
+                
+                setStatus('Returned ' + result.length + ' rows', 'success');
+                showResults(result);
+                
+                // CREATE文の場合はテーブル一覧を更新
+                if (sql.toUpperCase().indexOf('CREATE') >= 0) {
+                    setTimeout(loadTables, 500);
+                }
+            } catch (error) {
+                console.error('Query failed:', error);
+                setStatus('Query failed', 'error');
+            }
+        }
+        
+        // DOMが完全にロードされてから初期化
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() {
+                initMap();
+                loadTables();
+            });
+        } else {
+            initMap();
+            loadTables();
+        }
+    </script>
+</body>
+</html>
+)HTML";
+}
+
+// =====================================
+// DeckGLServerクラス
+// =====================================
+
+class DeckGLServer {
+private:
+    unique_ptr<httplib::Server> server;
+    std::thread server_thread;
+    std::atomic<bool> running{false};
+    DatabaseInstance* db_instance;
+    int port;
+    
+    static string ResultToJSON(unique_ptr<QueryResult> result) {
+        if (!result || result->HasError()) {
+            string err_msg = result ? result->GetError() : "Unknown error";
+            // エスケープ処理
+            string escaped;
+            for (char c : err_msg) {
+                if (c == '"') escaped += "\\\"";
+                else if (c == '\\') escaped += "\\\\";
+                else if (c == '\n') escaped += "\\n";
+                else escaped += c;
+            }
+            return "{\"error\": \"" + escaped + "\"}";
+        }
+        
+        string json = "[";
+        bool first_row = true;
+        
+        while (true) {
+            auto chunk = result->Fetch();
+            if (!chunk || chunk->size() == 0) break;
+            
+            for (idx_t row = 0; row < chunk->size(); row++) {
+                if (!first_row) json += ",";
+                json += "{";
+                
+                bool first_col = true;
+                for (idx_t col = 0; col < chunk->ColumnCount(); col++) {
+                    if (!first_col) json += ",";
+                    
+                    auto &col_name = result->names[col];
+                    json += "\"" + col_name + "\":";
+                    
+                    auto val = chunk->GetValue(col, row);
+                    if (val.IsNull()) {
+                        json += "null";
+                    } else {
+                        string str_val = val.ToString();
+                        json += "\"";
+                        for (char c : str_val) {
+                            if (c == '"') json += "\\\"";
+                            else if (c == '\\') json += "\\\\";
+                            else if (c == '\n') json += "\\n";
+                            else if (c == '\r') json += "\\r";
+                            else if (c == '\t') json += "\\t";
+                            else json += c;
+                        }
+                        json += "\"";
+                    }
+                    
+                    first_col = false;
+                }
+                
+                json += "}";
+                first_row = false;
+            }
+        }
+        
+        json += "]";
+        return json;
+    }
+    
+    static string ResultToGeoJSON(unique_ptr<QueryResult> result) {
+        if (!result || result->HasError()) {
+            string err_msg = result ? result->GetError() : "Query failed";
+            return "{\"error\":\"" + err_msg + "\",\"type\":\"FeatureCollection\",\"features\":[]}";
+        }
+        
+        string geojson = "{\"type\":\"FeatureCollection\",\"features\":[";
+        bool first = true;
+        
+        while (true) {
+            auto chunk = result->Fetch();
+            if (!chunk || chunk->size() == 0) break;
+            
+            for (idx_t row = 0; row < chunk->size(); row++) {
+                auto val = chunk->GetValue(0, row);
+                if (val.IsNull()) continue;
+                
+                if (!first) geojson += ",";
+                
+                auto geojson_str = val.ToString();
+                
+                geojson += "{\"type\":\"Feature\",";
+                geojson += "\"geometry\":" + geojson_str + ",";
+                geojson += "\"properties\":{}}";
+                
+                first = false;
+            }
+        }
+        
+        geojson += "]}";
+        return geojson;
+    }
+    
+    static string ResultToGeoJSONWithProperties(unique_ptr<QueryResult> result) {
+        if (!result || result->HasError()) {
+            string err_msg = result ? result->GetError() : "Query failed";
+            return "{\"error\":\"" + err_msg + "\",\"type\":\"FeatureCollection\",\"features\":[]}";
+        }
+        
+        auto& names = result->names;
+        auto& types = result->types;
+        
+        string geojson = "{\"type\":\"FeatureCollection\",\"features\":[";
+        bool first_feature = true;
+        
+        while (true) {
+            auto chunk = result->Fetch();
+            if (!chunk || chunk->size() == 0) break;
+            
+            for (idx_t row = 0; row < chunk->size(); row++) {
+                // 最初のカラムはgeojson geometry
+                auto geom_val = chunk->GetValue(0, row);
+                if (geom_val.IsNull()) continue;
+                
+                if (!first_feature) geojson += ",";
+                
+                geojson += "{\"type\":\"Feature\",";
+                geojson += "\"geometry\":" + geom_val.ToString() + ",";
+                geojson += "\"properties\":{";
+                
+                // 残りのカラムをプロパティとして追加
+                bool first_prop = true;
+                for (idx_t col = 1; col < chunk->ColumnCount(); col++) {
+                    auto val = chunk->GetValue(col, row);
+                    
+                    if (!first_prop) geojson += ",";
+                    geojson += "\"" + names[col] + "\":";
+                    
+                    if (val.IsNull()) {
+                        geojson += "null";
+                    } else if (types[col].IsNumeric()) {
+                        geojson += val.ToString();
+                    } else {
+                        // 文字列はエスケープしてクォート
+                        string str_val = val.ToString();
+                        string escaped;
+                        for (char c : str_val) {
+                            if (c == '"') escaped += "\\\"";
+                            else if (c == '\\') escaped += "\\\\";
+                            else if (c == '\n') escaped += "\\n";
+                            else if (c == '\r') escaped += "\\r";
+                            else if (c == '\t') escaped += "\\t";
+                            else escaped += c;
+                        }
+                        geojson += "\"" + escaped + "\"";
+                    }
+                    first_prop = false;
+                }
+                
+                geojson += "}}";
+                first_feature = false;
+            }
+        }
+        
+        geojson += "]}";
+        return geojson;
+    }
+    
+public:
+    DeckGLServer(DatabaseInstance* db, int port_num) 
+        : db_instance(db), port(port_num) {
+    }
+    
+    ~DeckGLServer() {
+        Stop();
+    }
+    
+    void Start(const string& host) {
+        server = make_uniq<httplib::Server>();
+        
+        server->Get("/", [](const httplib::Request&, httplib::Response& res) {
+            res.set_content(GetDeckGLHTML(), "text/html; charset=utf-8");
+        });
+        
+        server->Post("/api/query", [this](const httplib::Request& req, httplib::Response& res) {
+            try {
+                Connection conn(*db_instance);
+                auto result = conn.Query(req.body);
+                res.set_content(ResultToJSON(std::move(result)), "application/json");
+            } catch (std::exception& e) {
+                res.status = 500;
+                res.set_content("{\"error\":\"" + string(e.what()) + "\"}", "application/json");
+            }
+        });
+        
+        server->Get("/api/tables", [this](const httplib::Request&, httplib::Response& res) {
+            try {
+                Connection conn(*db_instance);
+                auto result = conn.Query(
+                    "SELECT table_name, table_schema "
+                    "FROM information_schema.tables "
+                    "WHERE table_schema NOT IN ('information_schema', 'pg_catalog')"
+                );
+                res.set_content(ResultToJSON(std::move(result)), "application/json");
+            } catch (std::exception& e) {
+                res.status = 500;
+                res.set_content("{\"error\":\"" + string(e.what()) + "\"}", "application/json");
+            }
+        });
+        
+        server->Get(R"(/api/geojson/(.+))", [this](const httplib::Request& req, httplib::Response& res) {
+            try {
+                string table_name = req.matches[1];
+                Connection conn(*db_instance);
+                
+                // spatial拡張をロード試行
+                auto load_result = conn.Query("LOAD spatial;");
+                bool has_spatial = !load_result->HasError();
+                
+                if (!has_spatial) {
+                    // spatial extensionがない場合はエラーを返す
+                    res.set_content("{\"error\":\"Spatial extension not available\",\"type\":\"FeatureCollection\",\"features\":[]}", "application/json");
+                    return;
+                }
+                
+                // まず geometry カラムがあるか確認
+                string check_sql = "SELECT column_name FROM information_schema.columns "
+                                  "WHERE table_name = '" + table_name + "' "
+                                  "AND (column_name = 'geometry' OR column_name = 'geom' OR column_name = 'the_geom')";
+                auto check_result = conn.Query(check_sql);
+                
+                if (!check_result || check_result->HasError()) {
+                    res.set_content("{\"error\":\"Could not check columns\",\"type\":\"FeatureCollection\",\"features\":[]}", "application/json");
+                    return;
+                }
+                
+                auto chunk = check_result->Fetch();
+                if (!chunk || chunk->size() == 0) {
+                    res.set_content("{\"error\":\"No geometry column found\",\"type\":\"FeatureCollection\",\"features\":[]}", "application/json");
+                    return;
+                }
+                
+                string geom_col = chunk->GetValue(0, 0).ToString();
+                
+                // ST_AsGeoJSONでGeoJSONを生成
+                string sql = "SELECT ST_AsGeoJSON(" + geom_col + ") as geojson, * EXCLUDE(" + geom_col + ") FROM \"" + table_name + "\"";
+                auto result = conn.Query(sql);
+                
+                if (result->HasError()) {
+                    res.set_content("{\"error\":\"" + result->GetError() + "\",\"type\":\"FeatureCollection\",\"features\":[]}", "application/json");
+                    return;
+                }
+                
+                // 結果をGeoJSONに変換
+                res.set_content(ResultToGeoJSONWithProperties(std::move(result)), "application/json");
+            } catch (std::exception& e) {
+                res.status = 500;
+                res.set_content("{\"error\":\"" + string(e.what()) + "\",\"type\":\"FeatureCollection\",\"features\":[]}", "application/json");
+            }
+        });
+        
+        running = true;
+        
+        server_thread = std::thread([this, host]() {
+            server->listen(host.c_str(), port);
+        });
+        
+#ifdef __APPLE__
+        system(("open http://localhost:" + std::to_string(port)).c_str());
+#elif __linux__
+        system(("xdg-open http://localhost:" + std::to_string(port) + " 2>/dev/null &").c_str());
+#elif _WIN32
+        system(("start http://localhost:" + std::to_string(port)).c_str());
+#endif
+    }
+    
+    void Stop() {
+        if (running && server) {
+            server->stop();
+            if (server_thread.joinable()) {
+                server_thread.join();
+            }
+            running = false;
+        }
+    }
+    
+    bool IsRunning() const { 
+        return running; 
+    }
+};
+
+// =====================================
+// グローバル変数
+// =====================================
+
+static unique_ptr<DeckGLServer> global_server;
+
+// =====================================
+// SQL関数の実装
+// =====================================
+
+inline void DeckGLStartFunction(DataChunk &args, ExpressionState &state, Vector &result) {
+    auto &context = state.GetContext();
+    
+    auto host = args.data[0].GetValue(0).ToString();
+    auto port = args.data[1].GetValue(0).GetValue<int32_t>();
+    
+    if (global_server && global_server->IsRunning()) {
+        global_server->Stop();
+    }
+    
+    auto &db = DatabaseInstance::GetDatabase(context);
+    global_server = make_uniq<DeckGLServer>(&db, port);
+    global_server->Start(host);
+    
+    string message = "DeckGL server started on " + host + ":" + std::to_string(port);
+    result.SetValue(0, Value(message));
+}
+
+inline void DeckGLStopFunction(DataChunk &args, ExpressionState &state, Vector &result) {
+    if (global_server && global_server->IsRunning()) {
+        global_server->Stop();
+        result.SetValue(0, Value("DeckGL server stopped"));
+    } else {
+        result.SetValue(0, Value("No server running"));
+    }
+}
+
+// =====================================
+// ExtensionLoader API (新API)
+// =====================================
+
+void DeckglExtension::Load(ExtensionLoader &loader) {
+    loader.RegisterFunction(ScalarFunction(
+        "deckgl_start",
+        {LogicalType::VARCHAR, LogicalType::INTEGER},
+        LogicalType::VARCHAR,
+        DeckGLStartFunction
+    ));
+    
+    loader.RegisterFunction(ScalarFunction(
+        "deckgl_stop",
+        {},
+        LogicalType::VARCHAR,
+        DeckGLStopFunction
+    ));
+}
+
+std::string DeckglExtension::Name() {
+    return "deckgl";
+}
+
+std::string DeckglExtension::Version() const {
+#ifdef EXT_VERSION_DECKGL
+    return EXT_VERSION_DECKGL;
+#else
+    return "0.1.0";
+#endif
+}
+
+} // namespace duckdb
+
+// =====================================
+// C API エントリーポイント
+// =====================================
+
+extern "C" {
+
+// 新API (ExtensionLoader)
+DUCKDB_EXTENSION_API void deckgl_duckdb_cpp_init(duckdb::ExtensionLoader &loader) {
+    duckdb::DeckglExtension ext;
+    ext.Load(loader);
+}
+
+// 旧API (DatabaseInstance) - 後方互換性のため
+DUCKDB_EXTENSION_API void deckgl_init(duckdb::DatabaseInstance &db) {
+    duckdb::Connection con(db);
+    con.BeginTransaction();
+    
+    auto &catalog = duckdb::Catalog::GetSystemCatalog(*con.context);
+    
+    duckdb::CreateScalarFunctionInfo deckgl_start_func(duckdb::ScalarFunction(
+        "deckgl_start",
+        {duckdb::LogicalType::VARCHAR, duckdb::LogicalType::INTEGER},
+        duckdb::LogicalType::VARCHAR,
+        duckdb::DeckGLStartFunction
+    ));
+    catalog.CreateFunction(*con.context, deckgl_start_func);
+    
+    duckdb::CreateScalarFunctionInfo deckgl_stop_func(duckdb::ScalarFunction(
+        "deckgl_stop",
+        {},
+        duckdb::LogicalType::VARCHAR,
+        duckdb::DeckGLStopFunction
+    ));
+    catalog.CreateFunction(*con.context, deckgl_stop_func);
+    
+    con.Commit();
+}
+
+DUCKDB_EXTENSION_API const char *deckgl_version() {
+    return duckdb::DuckDB::LibraryVersion();
+}
+
+}

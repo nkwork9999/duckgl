@@ -1,0 +1,37 @@
+# ビルドファイル
+build/
+bin/
+*.o
+*.a
+*.so
+*.dylib
+*.duckdb_extension
+
+# Rust（使っていなければ不要）
+chart_viewer/target/
+Cargo.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# テンポラリファイル
+/tmp/
+*.tmp
+*.log
+
+# DuckDB / テストファイル
+*.db
+*.duckdb
+test.csv
+test.html
+mydata.db
+
+# vcpkg
+vcpkg_installed/
