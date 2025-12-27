@@ -13,298 +13,103 @@
 #include <atomic>
 #include <memory>
 
-// httplib_wrapper.hpp経由でインクルード
 #include "httplib_wrapper.hpp"
 
 namespace duckdb {
 
-// =====================================
-// HTML UIテンプレート
-// =====================================
-
 static std::string GetDuckGLHTML() {
-    return R"HTML(
+    std::string html;
+    
+    html += R"HTML(
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
     <title>DuckGL - DuckDB Geospatial Visualization</title>
-    <!-- MapLibre 3.x系を使用（deck.glスクリプティングAPIとの互換性のため） -->
     <script src="https://unpkg.com/maplibre-gl@3.6.0/dist/maplibre-gl.js"></script>
     <link href="https://unpkg.com/maplibre-gl@3.6.0/dist/maplibre-gl.css" rel="stylesheet" />
     <script src="https://unpkg.com/deck.gl@^9.0.0/dist.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        
-        /* 地図コンテナ */
-        #map {
-            position: fixed;
-            top: 0;
-            left: 350px;
-            right: 0;
-            height: 100vh;
-        }
-        
-        /* サイドバー */
-        #sidebar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 350px;
-            height: 100vh;
-            background: #2c3e50;
-            color: #ecf0f1;
-            overflow-y: auto;
-            display: flex;
-            flex-direction: column;
-            z-index: 1000;
-        }
-        
-        #header {
-            padding: 20px;
-            background: #34495e;
-            border-bottom: 2px solid #1abc9c;
-        }
-        
-        #header h1 {
-            color: #1abc9c;
-            font-size: 24px;
-            margin-bottom: 5px;
-        }
-        
-        #header p {
-            color: #95a5a6;
-            font-size: 12px;
-        }
-        
-        #content {
-            padding: 20px;
-            flex: 1;
-            overflow-y: auto;
-        }
-        
-        .section {
-            margin-bottom: 25px;
-        }
-        
-        .section h3 {
-            color: #1abc9c;
-            margin-bottom: 10px;
-            font-size: 16px;
-        }
-        
-        #sql-editor {
-            width: 100%;
-            height: 120px;
-            font-family: 'Courier New', monospace;
-            background: #34495e;
-            color: #ecf0f1;
-            border: 1px solid #1abc9c;
-            border-radius: 4px;
-            padding: 10px;
-            resize: vertical;
-        }
-        
-        button {
-            background: #1abc9c;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            margin-top: 10px;
-            transition: background 0.3s;
-        }
-        
-        button:hover {
-            background: #16a085;
-        }
-        
-        .table-item {
-            background: #34495e;
-            padding: 12px;
-            margin: 8px 0;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: all 0.2s;
-            border-left: 3px solid transparent;
-        }
-        
-        .table-item:hover {
-            background: #3d5a6b;
-            border-left-color: #1abc9c;
-            transform: translateX(5px);
-        }
-        
-        .table-name {
-            font-weight: bold;
-            color: #ecf0f1;
-        }
-        
-        .table-info {
-            font-size: 12px;
-            color: #95a5a6;
-            margin-top: 4px;
-        }
-        
-        #status {
-            position: fixed;
-            top: 10px;
-            right: 10px;
-            background: rgba(0,0,0,0.8);
-            color: white;
-            padding: 10px 15px;
-            border-radius: 4px;
-            font-size: 12px;
-            z-index: 1001;
-        }
-        
+        #map { position: fixed; top: 0; left: 350px; right: 0; height: 100vh; }
+        #sidebar { position: fixed; top: 0; left: 0; width: 350px; height: 100vh; background: #2c3e50; color: #ecf0f1; overflow-y: auto; display: flex; flex-direction: column; z-index: 1000; }
+        #header { padding: 20px; background: #34495e; border-bottom: 2px solid #1abc9c; }
+        #header h1 { color: #1abc9c; font-size: 24px; margin-bottom: 5px; }
+        #header p { color: #95a5a6; font-size: 12px; }
+        #content { padding: 20px; flex: 1; overflow-y: auto; }
+        .section { margin-bottom: 25px; }
+        .section h3 { color: #1abc9c; margin-bottom: 10px; font-size: 16px; }
+        #sql-editor { width: 100%; height: 120px; font-family: monospace; background: #34495e; color: #ecf0f1; border: 1px solid #1abc9c; border-radius: 4px; padding: 10px; resize: vertical; }
+        button { background: #1abc9c; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-size: 14px; margin-top: 10px; }
+        button:hover { background: #16a085; }
+        .table-item { background: #34495e; padding: 12px; margin: 8px 0; border-radius: 4px; cursor: pointer; border-left: 3px solid transparent; }
+        .table-item:hover { background: #3d5a6b; border-left-color: #1abc9c; }
+        .table-name { font-weight: bold; color: #ecf0f1; }
+        .table-info { font-size: 12px; color: #95a5a6; margin-top: 4px; }
+        #status { position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,0.8); color: white; padding: 10px 15px; border-radius: 4px; font-size: 12px; z-index: 1001; }
         .loading { color: #f39c12; }
         .success { color: #2ecc71; }
         .error { color: #e74c3c; }
-        
-        #result-panel {
-            position: fixed;
-            bottom: 10px;
-            left: 360px;
-            right: 10px;
-            max-height: 200px;
-            background: rgba(0,0,0,0.9);
-            color: white;
-            padding: 15px;
-            border-radius: 4px;
-            font-size: 12px;
-            overflow: auto;
-            z-index: 1001;
-            display: none;
-        }
-        
-        /* MapLibre popup z-index */
-        .maplibregl-popup {
-            z-index: 2;
-        }
-        
-        #result-panel.show {
-            display: block;
-        }
-        
-        #result-panel table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        
-        #result-panel th, #result-panel td {
-            padding: 8px 12px;
-            text-align: left;
-            border-bottom: 1px solid #444;
-        }
-        
-        #result-panel th {
-            background: #1abc9c;
-            color: white;
-        }
-        
-        #result-panel tr:hover {
-            background: rgba(26, 188, 156, 0.2);
-        }
-        
-        .close-btn {
-            position: absolute;
-            top: 5px;
-            right: 10px;
-            background: none;
-            border: none;
-            color: #95a5a6;
-            font-size: 18px;
-            cursor: pointer;
-            margin: 0;
-            padding: 5px;
-        }
-        
-        .close-btn:hover {
-            color: #e74c3c;
-            background: none;
-        }
+        #result-panel { position: fixed; bottom: 10px; left: 360px; right: 10px; max-height: 200px; background: rgba(0,0,0,0.9); color: white; padding: 15px; border-radius: 4px; font-size: 12px; overflow: auto; z-index: 1001; display: none; }
+        #result-panel.show { display: block; }
+        #result-panel table { width: 100%; border-collapse: collapse; }
+        #result-panel th, #result-panel td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #444; }
+        #result-panel th { background: #1abc9c; color: white; }
+        .close-btn { position: absolute; top: 5px; right: 10px; background: none; border: none; color: #95a5a6; font-size: 18px; cursor: pointer; }
     </style>
 </head>
 <body>
-    <!-- 地図コンテナ -->
     <div id="map"></div>
-    
-    <!-- サイドバー -->
     <div id="sidebar">
         <div id="header">
-            <h1>🦆 DuckGL</h1>
+            <h1>DuckGL</h1>
             <p>DuckDB Geospatial Visualization</p>
         </div>
         <div id="content">
             <div class="section">
-                <h3>📝 SQL Query</h3>
-                <textarea id="sql-editor" placeholder="SELECT * FROM my_table LIMIT 100">SELECT 1 as id, 'hello' as message</textarea>
-                <button onclick="executeQuery()">▶ Execute Query</button>
+                <h3>SQL Query</h3>
+                <textarea id="sql-editor" placeholder="SELECT * FROM my_table">SELECT 1 as id</textarea>
+                <button onclick="executeQuery()">Execute</button>
             </div>
-            
             <div class="section">
-                <h3>📊 Tables</h3>
+                <h3>Tables</h3>
                 <div id="tables-list">Loading...</div>
             </div>
         </div>
     </div>
-    
-    <!-- ステータスと結果パネル -->
     <div id="status">Initializing...</div>
     <div id="result-panel">
-        <button class="close-btn" onclick="closeResults()">×</button>
+        <button class="close-btn" onclick="closeResults()">x</button>
         <div id="result-content"></div>
     </div>
-    
+)HTML";
+
+    html += R"HTML(
     <script>
         let map = null;
         let deckOverlay = null;
         
         function initMap() {
-            try {
-                // MapLibreで地図を直接作成
-                map = new maplibregl.Map({
-                    container: 'map',
-                    style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
-                    center: [139.7, 35.7],
-                    zoom: 4
-                });
-                
-                // ナビゲーションコントロール追加
-                map.addControl(new maplibregl.NavigationControl(), 'top-right');
-                
-                // 地図読み込み完了時
-                map.on('load', function() {
-                    console.log('MapLibre map loaded');
-                    
-                    // deck.gl MapboxOverlayを追加
-                    const {MapboxOverlay} = deck;
-                    deckOverlay = new MapboxOverlay({
-                        layers: []
-                    });
-                    map.addControl(deckOverlay);
-                    
-                    setStatus('Ready', 'success');
-                });
-                
-                map.on('error', function(e) {
-                    console.error('MapLibre error:', e);
-                });
-                
-            } catch (error) {
-                console.error('Failed to initialize map:', error);
-                setStatus('Map init failed: ' + error.message, 'error');
-            }
+            map = new maplibregl.Map({
+                container: 'map',
+                style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+                center: [139.7, 35.7],
+                zoom: 4
+            });
+            map.addControl(new maplibregl.NavigationControl(), 'top-right');
+            map.on('load', function() {
+                const {MapboxOverlay} = deck;
+                deckOverlay = new MapboxOverlay({ layers: [] });
+                map.addControl(deckOverlay);
+                setStatus('Ready', 'success');
+            });
         }
         
-        function setStatus(message, type = 'success') {
-            const status = document.getElementById('status');
-            status.textContent = message;
-            status.className = type;
+        function setStatus(msg, type) {
+            const s = document.getElementById('status');
+            s.textContent = msg;
+            s.className = type || 'success';
         }
         
         function closeResults() {
@@ -314,90 +119,62 @@ static std::string GetDuckGLHTML() {
         function showResults(data) {
             const panel = document.getElementById('result-panel');
             const content = document.getElementById('result-content');
-            
             if (!data || data.length === 0) {
-                content.innerHTML = '<p style="color: #95a5a6;">No results</p>';
+                content.innerHTML = '<p>No results</p>';
                 panel.classList.add('show');
                 return;
             }
-            
             if (data.error) {
-                content.innerHTML = '<p style="color: #e74c3c;">Error: ' + data.error + '</p>';
+                content.innerHTML = '<p style="color:#e74c3c;">Error: ' + data.error + '</p>';
                 panel.classList.add('show');
                 return;
             }
-            
-            const columns = Object.keys(data[0]);
-            let html = '<table><thead><tr>';
-            columns.forEach(col => html += '<th>' + col + '</th>');
-            html += '</tr></thead><tbody>';
-            
-            const maxRows = Math.min(data.length, 50);
-            for (let i = 0; i < maxRows; i++) {
-                html += '<tr>';
-                columns.forEach(col => {
-                    const val = data[i][col];
-                    html += '<td>' + (val === null ? 'NULL' : val) + '</td>';
-                });
-                html += '</tr>';
-            }
-            
-            html += '</tbody></table>';
-            if (data.length > 50) {
-                html += '<p style="margin-top:10px;color:#95a5a6;">Showing 50 of ' + data.length + ' rows</p>';
-            }
-            
-            content.innerHTML = html;
+            const cols = Object.keys(data[0]);
+            let h = '<table><thead><tr>';
+            cols.forEach(c => h += '<th>' + c + '</th>');
+            h += '</tr></thead><tbody>';
+            data.slice(0, 50).forEach(row => {
+                h += '<tr>';
+                cols.forEach(c => h += '<td>' + (row[c] === null ? 'NULL' : row[c]) + '</td>');
+                h += '</tr>';
+            });
+            h += '</tbody></table>';
+            content.innerHTML = h;
             panel.classList.add('show');
         }
         
         async function loadTables() {
             try {
-                const response = await fetch('/api/tables');
-                const data = await response.json();
-                
-                console.log('Tables:', data);
-                
-                const listDiv = document.getElementById('tables-list');
-                if (!data || data.length === 0 || data.error) {
-                    listDiv.innerHTML = '<p style="color: #95a5a6;">No tables found</p>';
+                const res = await fetch('/api/tables');
+                const data = await res.json();
+                const list = document.getElementById('tables-list');
+                if (!data || data.length === 0) {
+                    list.innerHTML = '<p>No tables</p>';
                     return;
                 }
-                
-                listDiv.innerHTML = data.map(function(t) {
-                    return '<div class="table-item" onclick="loadTableData(\'' + t.table_name + '\')">' +
-                        '<div class="table-name">' + t.table_name + '</div>' +
-                        '<div class="table-info">' + (t.table_schema || 'main') + '</div>' +
-                    '</div>';
-                }).join('');
-            } catch (error) {
-                console.error('Failed to load tables:', error);
-                document.getElementById('tables-list').innerHTML = 
-                    '<p style="color: #e74c3c;">Failed to load</p>';
+                list.innerHTML = data.map(t => 
+                    '<div class="table-item" onclick="loadTableData(\'' + t.table_name + '\')">' +
+                    '<div class="table-name">' + t.table_name + '</div></div>'
+                ).join('');
+            } catch (e) {
+                document.getElementById('tables-list').innerHTML = '<p>Failed</p>';
             }
         }
-        
-        async function loadTableData(tableName) {
-            setStatus('Loading ' + tableName + '...', 'loading');
-            
+)HTML";
+
+    html += R"HTML(
+        async function loadTableData(name) {
+            setStatus('Loading ' + name + '...', 'loading');
             try {
-                // まずGeoJSONを試す
-                const response = await fetch('/api/geojson/' + tableName);
-                const geojson = await response.json();
-                
-                console.log('GeoJSON response:', geojson);
-                
+                const res = await fetch('/api/geojson/' + name);
+                const geojson = await res.json();
                 if (geojson.error || !geojson.features || geojson.features.length === 0) {
-                    // GeoJSON失敗時は通常のSELECTを実行
-                    setStatus('No geometry, loading as table...', 'loading');
-                    document.getElementById('sql-editor').value = 'SELECT * FROM ' + tableName + ' LIMIT 100';
+                    document.getElementById('sql-editor').value = 'SELECT * FROM ' + name + ' LIMIT 100';
                     await executeQuery();
                     return;
                 }
-                
-                // GeoJSONレイヤーを作成
                 const layer = new deck.GeoJsonLayer({
-                    id: tableName + '-layer',
+                    id: name + '-layer',
                     data: geojson,
                     filled: true,
                     stroked: true,
@@ -407,127 +184,45 @@ static std::string GetDuckGLHTML() {
                     lineWidthMinPixels: 1,
                     getPointRadius: 100,
                     pointRadiusMinPixels: 5,
-                    pickable: true,
-                    autoHighlight: true,
-                    highlightColor: [255, 200, 0, 200],
-                    onClick: function(info) {
-                        if (info.object) {
-                            console.log('Clicked:', info.object);
-                            alert(JSON.stringify(info.object.properties, null, 2));
-                        }
-                    }
+                    pickable: true
                 });
-                
-                // MapboxOverlayにレイヤーを設定
-                if (deckOverlay) {
-                    deckOverlay.setProps({ layers: [layer] });
-                }
-                
-                // 境界にズーム（MapLibreのflyToを使用）
-                const bounds = calculateBounds(geojson);
-                if (bounds && map) {
-                    map.flyTo({
-                        center: [(bounds.minLon + bounds.maxLon) / 2, (bounds.minLat + bounds.maxLat) / 2],
-                        zoom: 10,
-                        duration: 1000
-                    });
-                }
-                
+                if (deckOverlay) deckOverlay.setProps({ layers: [layer] });
                 setStatus('Loaded ' + geojson.features.length + ' features', 'success');
-            } catch (error) {
-                console.error('Failed to load:', error);
-                setStatus('Error loading ' + tableName, 'error');
-                // フォールバック
-                document.getElementById('sql-editor').value = 'SELECT * FROM ' + tableName + ' LIMIT 100';
-                await executeQuery();
+            } catch (e) {
+                setStatus('Error', 'error');
             }
-        }
-        
-        function calculateBounds(geojson) {
-            let minLon = Infinity, maxLon = -Infinity;
-            let minLat = Infinity, maxLat = -Infinity;
-            let hasCoords = false;
-            
-            function processCoords(coords) {
-                if (typeof coords[0] === 'number') {
-                    const lon = coords[0];
-                    const lat = coords[1];
-                    if (isFinite(lon) && isFinite(lat)) {
-                        minLon = Math.min(minLon, lon);
-                        maxLon = Math.max(maxLon, lon);
-                        minLat = Math.min(minLat, lat);
-                        maxLat = Math.max(maxLat, lat);
-                        hasCoords = true;
-                    }
-                } else if (Array.isArray(coords)) {
-                    for (let i = 0; i < coords.length; i++) {
-                        processCoords(coords[i]);
-                    }
-                }
-            }
-            
-            for (let i = 0; i < geojson.features.length; i++) {
-                const feature = geojson.features[i];
-                if (feature.geometry && feature.geometry.coordinates) {
-                    processCoords(feature.geometry.coordinates);
-                }
-            }
-            
-            return hasCoords ? { minLon: minLon, maxLon: maxLon, minLat: minLat, maxLat: maxLat } : null;
         }
         
         async function executeQuery() {
             const sql = document.getElementById('sql-editor').value;
             setStatus('Executing...', 'loading');
-            
             try {
-                const response = await fetch('/api/query', {
+                const res = await fetch('/api/query', {
                     method: 'POST',
                     headers: { 'Content-Type': 'text/plain' },
                     body: sql
                 });
-                
-                const result = await response.json();
-                console.log('Query result:', result);
-                
+                const result = await res.json();
                 if (result.error) {
                     setStatus('Error: ' + result.error, 'error');
-                    showResults(result);
-                    return;
+                } else {
+                    setStatus('Returned ' + result.length + ' rows', 'success');
                 }
-                
-                setStatus('Returned ' + result.length + ' rows', 'success');
                 showResults(result);
-                
-                // CREATE文の場合はテーブル一覧を更新
-                if (sql.toUpperCase().indexOf('CREATE') >= 0) {
-                    setTimeout(loadTables, 500);
-                }
-            } catch (error) {
-                console.error('Query failed:', error);
+            } catch (e) {
                 setStatus('Query failed', 'error');
             }
         }
         
-        // DOMが完全にロードされてから初期化
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', function() {
-                initMap();
-                loadTables();
-            });
-        } else {
-            initMap();
-            loadTables();
-        }
+        initMap();
+        loadTables();
     </script>
 </body>
 </html>
 )HTML";
-}
 
-// =====================================
-// DuckGLServerクラス
-// =====================================
+    return html;
+}
 
 class DuckGLServer {
 private:
@@ -540,7 +235,6 @@ private:
     static string ResultToJSON(unique_ptr<QueryResult> result) {
         if (!result || result->HasError()) {
             string err_msg = result ? result->GetError() : "Unknown error";
-            // エスケープ処理
             string escaped;
             for (char c : err_msg) {
                 if (c == '"') escaped += "\\\"";
@@ -598,39 +292,6 @@ private:
         return json;
     }
     
-    static string ResultToGeoJSON(unique_ptr<QueryResult> result) {
-        if (!result || result->HasError()) {
-            string err_msg = result ? result->GetError() : "Query failed";
-            return "{\"error\":\"" + err_msg + "\",\"type\":\"FeatureCollection\",\"features\":[]}";
-        }
-        
-        string geojson = "{\"type\":\"FeatureCollection\",\"features\":[";
-        bool first = true;
-        
-        while (true) {
-            auto chunk = result->Fetch();
-            if (!chunk || chunk->size() == 0) break;
-            
-            for (idx_t row = 0; row < chunk->size(); row++) {
-                auto val = chunk->GetValue(0, row);
-                if (val.IsNull()) continue;
-                
-                if (!first) geojson += ",";
-                
-                auto geojson_str = val.ToString();
-                
-                geojson += "{\"type\":\"Feature\",";
-                geojson += "\"geometry\":" + geojson_str + ",";
-                geojson += "\"properties\":{}}";
-                
-                first = false;
-            }
-        }
-        
-        geojson += "]}";
-        return geojson;
-    }
-    
     static string ResultToGeoJSONWithProperties(unique_ptr<QueryResult> result) {
         if (!result || result->HasError()) {
             string err_msg = result ? result->GetError() : "Query failed";
@@ -648,7 +309,6 @@ private:
             if (!chunk || chunk->size() == 0) break;
             
             for (idx_t row = 0; row < chunk->size(); row++) {
-                // 最初のカラムはgeojson geometry
                 auto geom_val = chunk->GetValue(0, row);
                 if (geom_val.IsNull()) continue;
                 
@@ -658,7 +318,6 @@ private:
                 geojson += "\"geometry\":" + geom_val.ToString() + ",";
                 geojson += "\"properties\":{";
                 
-                // 残りのカラムをプロパティとして追加
                 bool first_prop = true;
                 for (idx_t col = 1; col < chunk->ColumnCount(); col++) {
                     auto val = chunk->GetValue(col, row);
@@ -671,7 +330,6 @@ private:
                     } else if (types[col].IsNumeric()) {
                         geojson += val.ToString();
                     } else {
-                        // 文字列はエスケープしてクォート
                         string str_val = val.ToString();
                         string escaped;
                         for (char c : str_val) {
@@ -743,17 +401,14 @@ public:
                 string table_name = req.matches[1];
                 Connection conn(*db_instance);
                 
-                // spatial拡張をロード試行
                 auto load_result = conn.Query("LOAD spatial;");
                 bool has_spatial = !load_result->HasError();
                 
                 if (!has_spatial) {
-                    // spatial extensionがない場合はエラーを返す
                     res.set_content("{\"error\":\"Spatial extension not available\",\"type\":\"FeatureCollection\",\"features\":[]}", "application/json");
                     return;
                 }
                 
-                // まず geometry カラムがあるか確認
                 string check_sql = "SELECT column_name FROM information_schema.columns "
                                   "WHERE table_name = '" + table_name + "' "
                                   "AND (column_name = 'geometry' OR column_name = 'geom' OR column_name = 'the_geom')";
@@ -772,7 +427,6 @@ public:
                 
                 string geom_col = chunk->GetValue(0, 0).ToString();
                 
-                // ST_AsGeoJSONでGeoJSONを生成
                 string sql = "SELECT ST_AsGeoJSON(" + geom_col + ") as geojson, * EXCLUDE(" + geom_col + ") FROM \"" + table_name + "\"";
                 auto result = conn.Query(sql);
                 
@@ -781,7 +435,6 @@ public:
                     return;
                 }
                 
-                // 結果をGeoJSONに変換
                 res.set_content(ResultToGeoJSONWithProperties(std::move(result)), "application/json");
             } catch (std::exception& e) {
                 res.status = 500;
@@ -819,15 +472,7 @@ public:
     }
 };
 
-// =====================================
-// グローバル変数
-// =====================================
-
 static unique_ptr<DuckGLServer> global_server;
-
-// =====================================
-// SQL関数の実装
-// =====================================
 
 inline void DuckGLStartFunction(DataChunk &args, ExpressionState &state, Vector &result) {
     auto &context = state.GetContext();
@@ -855,10 +500,6 @@ inline void DuckGLStopFunction(DataChunk &args, ExpressionState &state, Vector &
         result.SetValue(0, Value("No server running"));
     }
 }
-
-// =====================================
-// ExtensionLoader API (新API)
-// =====================================
 
 void DuckglExtension::Load(ExtensionLoader &loader) {
     loader.RegisterFunction(ScalarFunction(
@@ -890,19 +531,13 @@ std::string DuckglExtension::Version() const {
 
 } // namespace duckdb
 
-// =====================================
-// C API エントリーポイント
-// =====================================
-
 extern "C" {
 
-// 新API (ExtensionLoader)
 DUCKDB_EXTENSION_API void duckgl_duckdb_cpp_init(duckdb::ExtensionLoader &loader) {
     duckdb::DuckglExtension ext;
     ext.Load(loader);
 }
 
-// 旧API (DatabaseInstance) - 後方互換性のため
 DUCKDB_EXTENSION_API void duckgl_init(duckdb::DatabaseInstance &db) {
     duckdb::Connection con(db);
     con.BeginTransaction();
