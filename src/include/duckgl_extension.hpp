@@ -4,7 +4,7 @@
 
 namespace duckdb {
 
-class DeckglExtension : public Extension {
+class DuckglExtension : public Extension {
 public:
 	void Load(ExtensionLoader &loader) override;
 	std::string Name() override;

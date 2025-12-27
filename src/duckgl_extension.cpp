@@ -1,6 +1,6 @@
 #define DUCKDB_EXTENSION_MAIN
 
-#include "deckgl_extension.hpp"
+#include "duckgl_extension.hpp"
 #include "duckdb.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/function/scalar_function.hpp"
@@ -19,16 +19,16 @@
 namespace duckdb {
 
 // =====================================
-// HTML UIテンプレート（修正版）
+// HTML UIテンプレート
 // =====================================
 
-static std::string GetDeckGLHTML() {
+static std::string GetDuckGLHTML() {
     return R"HTML(
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
-    <title>DeckGL - DuckDB Geospatial Visualization</title>
+    <title>DuckGL - DuckDB Geospatial Visualization</title>
     <!-- MapLibre 3.x系を使用（deck.glスクリプティングAPIとの互換性のため） -->
     <script src="https://unpkg.com/maplibre-gl@3.6.0/dist/maplibre-gl.js"></script>
     <link href="https://unpkg.com/maplibre-gl@3.6.0/dist/maplibre-gl.css" rel="stylesheet" />
@@ -236,7 +236,7 @@ static std::string GetDeckGLHTML() {
     <!-- サイドバー -->
     <div id="sidebar">
         <div id="header">
-            <h1>🦆 DeckGL</h1>
+            <h1>🦆 DuckGL</h1>
             <p>DuckDB Geospatial Visualization</p>
         </div>
         <div id="content">
@@ -526,10 +526,10 @@ static std::string GetDeckGLHTML() {
 }
 
 // =====================================
-// DeckGLServerクラス
+// DuckGLServerクラス
 // =====================================
 
-class DeckGLServer {
+class DuckGLServer {
 private:
     unique_ptr<httplib::Server> server;
     std::thread server_thread;
@@ -697,11 +697,11 @@ private:
     }
     
 public:
-    DeckGLServer(DatabaseInstance* db, int port_num) 
+    DuckGLServer(DatabaseInstance* db, int port_num) 
         : db_instance(db), port(port_num) {
     }
     
-    ~DeckGLServer() {
+    ~DuckGLServer() {
         Stop();
     }
     
@@ -709,7 +709,7 @@ public:
         server = make_uniq<httplib::Server>();
         
         server->Get("/", [](const httplib::Request&, httplib::Response& res) {
-            res.set_content(GetDeckGLHTML(), "text/html; charset=utf-8");
+            res.set_content(GetDuckGLHTML(), "text/html; charset=utf-8");
         });
         
         server->Post("/api/query", [this](const httplib::Request& req, httplib::Response& res) {
@@ -823,13 +823,13 @@ public:
 // グローバル変数
 // =====================================
 
-static unique_ptr<DeckGLServer> global_server;
+static unique_ptr<DuckGLServer> global_server;
 
 // =====================================
 // SQL関数の実装
 // =====================================
 
-inline void DeckGLStartFunction(DataChunk &args, ExpressionState &state, Vector &result) {
+inline void DuckGLStartFunction(DataChunk &args, ExpressionState &state, Vector &result) {
     auto &context = state.GetContext();
     
     auto host = args.data[0].GetValue(0).ToString();
@@ -840,17 +840,17 @@ inline void DeckGLStartFunction(DataChunk &args, ExpressionState &state, Vector 
     }
     
     auto &db = DatabaseInstance::GetDatabase(context);
-    global_server = make_uniq<DeckGLServer>(&db, port);
+    global_server = make_uniq<DuckGLServer>(&db, port);
     global_server->Start(host);
     
-    string message = "DeckGL server started on " + host + ":" + std::to_string(port);
+    string message = "DuckGL server started on " + host + ":" + std::to_string(port);
     result.SetValue(0, Value(message));
 }
 
-inline void DeckGLStopFunction(DataChunk &args, ExpressionState &state, Vector &result) {
+inline void DuckGLStopFunction(DataChunk &args, ExpressionState &state, Vector &result) {
     if (global_server && global_server->IsRunning()) {
         global_server->Stop();
-        result.SetValue(0, Value("DeckGL server stopped"));
+        result.SetValue(0, Value("DuckGL server stopped"));
     } else {
         result.SetValue(0, Value("No server running"));
     }
@@ -860,29 +860,29 @@ inline void DeckGLStopFunction(DataChunk &args, ExpressionState &state, Vector &
 // ExtensionLoader API (新API)
 // =====================================
 
-void DeckglExtension::Load(ExtensionLoader &loader) {
+void DuckglExtension::Load(ExtensionLoader &loader) {
     loader.RegisterFunction(ScalarFunction(
-        "deckgl_start",
+        "duckgl_start",
         {LogicalType::VARCHAR, LogicalType::INTEGER},
         LogicalType::VARCHAR,
-        DeckGLStartFunction
+        DuckGLStartFunction
     ));
     
     loader.RegisterFunction(ScalarFunction(
-        "deckgl_stop",
+        "duckgl_stop",
         {},
         LogicalType::VARCHAR,
-        DeckGLStopFunction
+        DuckGLStopFunction
     ));
 }
 
-std::string DeckglExtension::Name() {
-    return "deckgl";
+std::string DuckglExtension::Name() {
+    return "duckgl";
 }
 
-std::string DeckglExtension::Version() const {
-#ifdef EXT_VERSION_DECKGL
-    return EXT_VERSION_DECKGL;
+std::string DuckglExtension::Version() const {
+#ifdef EXT_VERSION_DUCKGL
+    return EXT_VERSION_DUCKGL;
 #else
     return "0.1.0";
 #endif
@@ -897,38 +897,38 @@ std::string DeckglExtension::Version() const {
 extern "C" {
 
 // 新API (ExtensionLoader)
-DUCKDB_EXTENSION_API void deckgl_duckdb_cpp_init(duckdb::ExtensionLoader &loader) {
-    duckdb::DeckglExtension ext;
+DUCKDB_EXTENSION_API void duckgl_duckdb_cpp_init(duckdb::ExtensionLoader &loader) {
+    duckdb::DuckglExtension ext;
     ext.Load(loader);
 }
 
 // 旧API (DatabaseInstance) - 後方互換性のため
-DUCKDB_EXTENSION_API void deckgl_init(duckdb::DatabaseInstance &db) {
+DUCKDB_EXTENSION_API void duckgl_init(duckdb::DatabaseInstance &db) {
     duckdb::Connection con(db);
     con.BeginTransaction();
     
     auto &catalog = duckdb::Catalog::GetSystemCatalog(*con.context);
     
-    duckdb::CreateScalarFunctionInfo deckgl_start_func(duckdb::ScalarFunction(
-        "deckgl_start",
+    duckdb::CreateScalarFunctionInfo duckgl_start_func(duckdb::ScalarFunction(
+        "duckgl_start",
         {duckdb::LogicalType::VARCHAR, duckdb::LogicalType::INTEGER},
         duckdb::LogicalType::VARCHAR,
-        duckdb::DeckGLStartFunction
+        duckdb::DuckGLStartFunction
     ));
-    catalog.CreateFunction(*con.context, deckgl_start_func);
+    catalog.CreateFunction(*con.context, duckgl_start_func);
     
-    duckdb::CreateScalarFunctionInfo deckgl_stop_func(duckdb::ScalarFunction(
-        "deckgl_stop",
+    duckdb::CreateScalarFunctionInfo duckgl_stop_func(duckdb::ScalarFunction(
+        "duckgl_stop",
         {},
         duckdb::LogicalType::VARCHAR,
-        duckdb::DeckGLStopFunction
+        duckdb::DuckGLStopFunction
     ));
-    catalog.CreateFunction(*con.context, deckgl_stop_func);
+    catalog.CreateFunction(*con.context, duckgl_stop_func);
     
     con.Commit();
 }
 
-DUCKDB_EXTENSION_API const char *deckgl_version() {
+DUCKDB_EXTENSION_API const char *duckgl_version() {
     return duckdb::DuckDB::LibraryVersion();
 }
 
