@@ -27,3 +27,18 @@ Target: 100 independently reviewable improvements. Completed in this batch: 21. 
 ## Validation
 
 Standalone C++ encoding regressions and embedded JavaScript regressions passed. Translation unit passed clang++ syntax checking against miniplot DuckDB headers. Full extension integration remains unverified.
+
+## UI simplification follow-up
+
+The default UI now focuses on table selection, SQL execution and result viewing.
+Added searchable schema-aware table selection, keyboard execution, explicit NULL
+values, accessible status/focus controls, responsive layouts, failure/retry
+feedback and duplicate-request prevention. DuckGL fits map bounds to selected
+geometry and queries the selected schema. DuckDBI exposes chart controls only on
+request and keeps dashboards/reports at `/advanced`; CSV exports quote values.
+
+Validation: standalone regressions and Playwright browser regressions passed.
+Native production HTTP servers passed integration tests against installed DuckDB
+1.5.2, including real query results and restart. Browser visualization libraries
+are mocked; real map-tile rendering and community extension loader/build CI are
+separate checks. These changes do not represent completion of the 100-item target.

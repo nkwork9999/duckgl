@@ -9,6 +9,7 @@
 #include "duckdb/main/database.hpp"
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "web_encoding.hpp"
+#include "simple_ui.hpp"
 
 #include <atomic>
 #include <memory>
@@ -18,214 +19,7 @@
 
 namespace duckdb {
 
-static std::string GetDuckGLHTML() {
-  std::string html;
-
-  html += R"HTML(
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>DuckGL - DuckDB Geospatial Visualization</title>
-    <script src="https://unpkg.com/maplibre-gl@3.6.0/dist/maplibre-gl.js"></script>
-    <link href="https://unpkg.com/maplibre-gl@3.6.0/dist/maplibre-gl.css" rel="stylesheet" />
-    <script src="https://unpkg.com/deck.gl@^9.0.0/dist.min.js"></script>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        #map { position: fixed; top: 0; left: 350px; right: 0; height: 100vh; }
-        #sidebar { position: fixed; top: 0; left: 0; width: 350px; height: 100vh; background: #2c3e50; color: #ecf0f1; overflow-y: auto; display: flex; flex-direction: column; z-index: 1000; }
-        #header { padding: 20px; background: #34495e; border-bottom: 2px solid #1abc9c; }
-        #header h1 { color: #1abc9c; font-size: 24px; margin-bottom: 5px; }
-        #header p { color: #95a5a6; font-size: 12px; }
-        #content { padding: 20px; flex: 1; overflow-y: auto; }
-        .section { margin-bottom: 25px; }
-        .section h3 { color: #1abc9c; margin-bottom: 10px; font-size: 16px; }
-        #sql-editor { width: 100%; height: 120px; font-family: monospace; background: #34495e; color: #ecf0f1; border: 1px solid #1abc9c; border-radius: 4px; padding: 10px; resize: vertical; }
-        button { background: #1abc9c; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-size: 14px; margin-top: 10px; }
-        button:hover { background: #16a085; }
-        .table-item { background: #34495e; padding: 12px; margin: 8px 0; border-radius: 4px; cursor: pointer; border-left: 3px solid transparent; }
-        .table-item:hover { background: #3d5a6b; border-left-color: #1abc9c; }
-        .table-name { font-weight: bold; color: #ecf0f1; }
-        .table-info { font-size: 12px; color: #95a5a6; margin-top: 4px; }
-        #status { position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,0.8); color: white; padding: 10px 15px; border-radius: 4px; font-size: 12px; z-index: 1001; }
-        .loading { color: #f39c12; }
-        .success { color: #2ecc71; }
-        .error { color: #e74c3c; }
-        #result-panel { position: fixed; bottom: 10px; left: 360px; right: 10px; max-height: 200px; background: rgba(0,0,0,0.9); color: white; padding: 15px; border-radius: 4px; font-size: 12px; overflow: auto; z-index: 1001; display: none; }
-        #result-panel.show { display: block; }
-        #result-panel table { width: 100%; border-collapse: collapse; }
-        #result-panel th, #result-panel td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #444; }
-        #result-panel th { background: #1abc9c; color: white; }
-        .close-btn { position: absolute; top: 5px; right: 10px; background: none; border: none; color: #95a5a6; font-size: 18px; cursor: pointer; }
-    </style>
-</head>
-<body>
-    <div id="map"></div>
-    <div id="sidebar">
-        <div id="header">
-            <h1>DuckGL</h1>
-            <p>DuckDB Geospatial Visualization</p>
-        </div>
-        <div id="content">
-            <div class="section">
-                <h3>SQL Query</h3>
-                <textarea id="sql-editor" placeholder="SELECT * FROM my_table">SELECT 1 as id</textarea>
-                <button onclick="executeQuery()">Execute</button>
-            </div>
-            <div class="section">
-                <h3>Tables</h3>
-                <div id="tables-list">Loading...</div>
-            </div>
-        </div>
-    </div>
-    <div id="status">Initializing...</div>
-    <div id="result-panel">
-        <button class="close-btn" onclick="closeResults()">x</button>
-        <div id="result-content"></div>
-    </div>
-)HTML";
-
-  html += R"HTML(
-    <script>
-        let map = null;
-        let deckOverlay = null;
-        
-        function initMap() {
-            map = new maplibregl.Map({
-                container: 'map',
-                style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
-                center: [139.7, 35.7],
-                zoom: 4
-            });
-            map.addControl(new maplibregl.NavigationControl(), 'top-right');
-            map.on('load', function() {
-                const {MapboxOverlay} = deck;
-                deckOverlay = new MapboxOverlay({ layers: [] });
-                map.addControl(deckOverlay);
-                setStatus('Ready', 'success');
-            });
-        }
-        
-        function setStatus(msg, type) {
-            const s = document.getElementById('status');
-            s.textContent = msg;
-            s.className = type || 'success';
-        }
-        
-        function closeResults() {
-            document.getElementById('result-panel').classList.remove('show');
-        }
-        
-        function showResults(data) {
-            const panel = document.getElementById('result-panel');
-            const content = document.getElementById('result-content');
-            content.replaceChildren();
-            panel.classList.add('show');
-            if (data?.error) { content.textContent = 'Error: ' + data.error; return; }
-            if (!Array.isArray(data) || !data.length) { content.textContent = 'No results'; return; }
-            const columns = Object.keys(data[0]);
-            const table = document.createElement('table');
-            const head = table.createTHead().insertRow();
-            for (const column of columns) {
-                const cell = document.createElement('th');
-                cell.textContent = column;
-                head.appendChild(cell);
-            }
-            const body = table.createTBody();
-            for (const row of data.slice(0, 50)) {
-                const tr = body.insertRow();
-                for (const column of columns) tr.insertCell().textContent = row[column] === null ? 'NULL' : String(row[column]);
-            }
-            content.appendChild(table);
-        }
-
-        async function loadTables() {
-            try {
-                const res = await fetch('/api/tables');
-                const data = await res.json();
-                const list = document.getElementById('tables-list');
-                if (!data || data.length === 0) {
-                    list.innerHTML = '<p>No tables</p>';
-                    return;
-                }
-                list.replaceChildren();
-                for (const table of data) {
-                    const item = document.createElement('button');
-                    item.className = 'table-item';
-                    item.type = 'button';
-                    item.textContent = table.table_name;
-                    item.addEventListener('click', () => loadTableData(table.table_name));
-                    list.appendChild(item);
-                }
-            } catch (e) {
-                document.getElementById('tables-list').innerHTML = '<p>Failed</p>';
-            }
-        }
-)HTML";
-
-  html += R"HTML(
-        async function loadTableData(name) {
-            setStatus('Loading ' + name + '...', 'loading');
-            try {
-                const res = await fetch('/api/geojson/' + encodeURIComponent(name));
-                const geojson = await res.json();
-                if (geojson.error || !geojson.features || geojson.features.length === 0) {
-                    document.getElementById('sql-editor').value = 'SELECT * FROM "' + name.replace(/"/g, '""') + '" LIMIT 100';
-                    await executeQuery();
-                    return;
-                }
-                const layer = new deck.GeoJsonLayer({
-                    id: name + '-layer',
-                    data: geojson,
-                    filled: true,
-                    stroked: true,
-                    getFillColor: [26, 188, 156, 180],
-                    getLineColor: [80, 80, 80, 255],
-                    getLineWidth: 2,
-                    lineWidthMinPixels: 1,
-                    getPointRadius: 100,
-                    pointRadiusMinPixels: 5,
-                    pickable: true
-                });
-                if (deckOverlay) deckOverlay.setProps({ layers: [layer] });
-                setStatus('Loaded ' + geojson.features.length + ' features', 'success');
-            } catch (e) {
-                setStatus('Error', 'error');
-            }
-        }
-        
-        async function executeQuery() {
-            const sql = document.getElementById('sql-editor').value;
-            if (!sql.trim()) { setStatus('Enter a SQL query', 'error'); return; }
-            setStatus('Executing...', 'loading');
-            try {
-                const res = await fetch('/api/query', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'text/plain' },
-                    body: sql
-                });
-                const result = await res.json();
-                if (result.error) {
-                    setStatus('Error: ' + result.error, 'error');
-                } else {
-                    setStatus('Returned ' + result.length + ' rows', 'success');
-                }
-                showResults(result);
-            } catch (e) {
-                setStatus('Query failed', 'error');
-            }
-        }
-        
-        initMap();
-        loadTables();
-    </script>
-</body>
-</html>
-)HTML";
-
-  return html;
-}
+static std::string GetDuckGLHTML() { return DUCKGL_SIMPLE_HTML; }
 
 class DuckGLServer {
 private:
@@ -374,6 +168,7 @@ public:
                                                httplib::Response &res) {
       try {
         string table_name = req.matches[1];
+        string schema = req.has_param("schema") ? req.get_param_value("schema") : "main";
         Connection conn(*db_instance);
 
         auto load_result = conn.Query("LOAD spatial;");
@@ -390,7 +185,7 @@ public:
         string check_sql = "SELECT column_name FROM information_schema.columns "
                            "WHERE table_name = " +
                            web_encoding::SqlLiteral(table_name) +
-                           " "
+                           " AND table_schema = " + web_encoding::SqlLiteral(schema) + " "
                            "AND (column_name = 'geometry' OR column_name = "
                            "'geom' OR column_name = 'the_geom')";
         auto check_result = conn.Query(check_sql);
@@ -417,7 +212,7 @@ public:
         string sql =
             "SELECT ST_AsGeoJSON(" + web_encoding::SqlIdentifier(geom_col) +
             ") as geojson, * EXCLUDE(" + web_encoding::SqlIdentifier(geom_col) +
-            ") FROM " + web_encoding::SqlIdentifier(table_name);
+            ") FROM " + web_encoding::SqlIdentifier(schema) + "." + web_encoding::SqlIdentifier(table_name);
         auto result = conn.Query(sql);
 
         if (result->HasError()) {

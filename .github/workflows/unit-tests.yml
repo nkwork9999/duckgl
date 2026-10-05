@@ -16,3 +16,13 @@ jobs:
         with:
           node-version: '22'
       - run: bash scripts/test-unit.sh
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix test
+      - run: npx --prefix test playwright install --with-deps chromium
+      - run: node test/browser.test.cjs

@@ -35,3 +35,4 @@ mydata.db
 
 # vcpkg
 vcpkg_installed/
+test/node_modules/
