@@ -42,3 +42,9 @@ Native production HTTP servers passed integration tests against installed DuckDB
 1.5.2, including real query results and restart. Browser visualization libraries
 are mocked; real map-tile rendering and community extension loader/build CI are
 separate checks. These changes do not represent completion of the 100-item target.
+
+Distribution CI follow-up: use DuckDB v1.5.3 and the matching v1.5-variegata
+CI tools. The old workflows used incompatible/outdated releases (DuckGL also
+used the template extension name). Old musl jobs failed in Docker setup before
+compilation. Current cross-platform CI remains to be verified; no platforms
+were excluded to hide these failures.

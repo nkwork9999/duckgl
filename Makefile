@@ -1,8 +1,8 @@
 PROJ_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
-DUCKDB_VERSION=v1.4.2
+DUCKDB_VERSION=v1.5.3
 
 # Configuration of extension
-EXT_NAME=miniplot
+EXT_NAME=duckgl
 EXT_CONFIG=${PROJ_DIR}extension_config.cmake
 
 # Include the Makefile from extension-ci-tools
