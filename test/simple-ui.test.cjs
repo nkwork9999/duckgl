@@ -4,7 +4,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '../src/include/simple_ui.hpp'), 'utf8');
 const html = source.match(/R"DUCKUI\(([\s\S]*)\)DUCKUI"/)[1];
-const script = html.match(/<script>([\s\S]*)<\/script>/)[1];
+const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 new vm.Script(script);
 function isolated(name) {
   const start = script.indexOf('function ' + name + '(');
@@ -29,3 +29,8 @@ assert(html.includes('name="viewport"'));
 assert(!html.includes('onclick='));
 assert(html.includes('aria-live="polite"'));
 console.log('Simple UI syntax, identifier, CSV and accessibility regressions passed');
+
+const exportSource = fs.readFileSync(path.join(__dirname, "../src/include/export_ui.hpp"), "utf8");
+const exportScript = exportSource.match(/R"DUCKEXPORT\(([\s\S]*)\)DUCKEXPORT"/)[1];
+new vm.Script(exportScript);
+assert(Buffer.byteLength(exportScript, "utf8") < 16384);

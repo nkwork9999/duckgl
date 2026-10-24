@@ -1,0 +1,82 @@
+{
+  "date": "2026-10-24",
+  "community_pr": "https://github.com/duckdb/community-extensions/pull/2927",
+  "duckdb": {
+    "community_release_alias": "v2.0.0",
+    "commit": "d54cbbe3df17e8e5ce68312f483b4155836112aa",
+    "local_sdk_version": "v2.0.0",
+    "local_platform": "osx_arm64",
+    "profile": "Debug",
+    "source_ci_tools": "v2.0-cyanoptera",
+    "prior_local_sdk_version": "v2.0.0-alpha49307"
+  },
+  "regressions_observed_before_fix": [
+    "private QueryResult names/types compile errors",
+    "PREPARE started the HTTP server before EXECUTE",
+    "only 3 of 4099 stop results initialized",
+    "multirow start returned one message and two empty strings",
+    "invalid port was reported as INTERNAL because start was not fallible"
+  ],
+  "validation": {
+    "project_unit_script": "passed",
+    "official_sdk_format_check": "passed",
+    "native_extension_build_load_http": "passed",
+    "http_filtered_rows_checked": 4001,
+    "multirow_start_results": 3,
+    "multirow_stop_results": 4099,
+    "native_sql": {
+      "combined_cases": 4,
+      "combined_assertions": 24,
+      "skips": 0,
+      "local_harness": "same SQL with require replaced by mandatory absolute LOAD; matching actual SDK unittest runner",
+      "sdk_version": "v2.0.0-alpha49307 (same source SHA; prior local build)"
+    },
+    "cross_platform_ci": "pending_new_source_and_community_revision",
+    "existing_browser_suite": "passed",
+    "export_browser_suite": {
+      "status": "passed",
+      "rows": 305,
+      "offline_html": true,
+      "html_escaping_and_no_scripts": true,
+      "geometry": "SVG points, lines, polygon holes; no base-map tiles or current camera snapshot",
+      "pdf": "actual Chromium print-engine PDF; selectable Japanese and repeated table headers",
+      "visual_review": "rendered first, first-table and last PDF pages inspected",
+      "sample_pdf_sha256": "71b86f16a4461e5c5f689e0727c33ef66f6904741b3c84d4802ac45e9e38174f"
+    },
+    "parallel_native_sql_http_script": "passed",
+    "official_release_cli": {
+      "version": "v2.0.0",
+      "sha": "d54cbbe3df17e8e5ce68312f483b4155836112aa",
+      "url": "https://github.com/duckdb/duckdb/releases/download/v2.0.0/duckdb-cli-osx-arm64.tar.gz",
+      "archive_sha256": "188a36fe8883ef52e69165a0cbb6031ef679c8e6c448a1ce22951964149b7f96",
+      "both_native_http_sql_scripts": "passed",
+      "extension_load": "passed with ordinary version validation",
+      "module_sha256": "a199dfa77e8d580c71705003ddbdf143e3fdc015e1b37119f02b9252187c0205"
+    },
+    "metadata_regression": {
+      "red": "CI extension metadata identified the full commit SHA while the prebuilt host identifies v2.0.0, causing LOAD rejection",
+      "fix": "Makefile defaults DUCKDB_VERSION to v2.0.0 with ?=, allowing CI environment version; workflow separately pins SDK commit",
+      "green": "Actual modules rebuilt with v2.0.0 metadata and both loaded into official v2.0.0 CLI; all native scripts pass"
+    }
+  },
+  "vendor": {
+    "cpp_httplib_moved_without_content_change": true,
+    "sha256": "e4991b69f485bc39027e34b3c101c20f5cd8cc9a34d871da04108b50694558e3"
+  },
+  "source_sha256": {
+    "src/duckgl_extension.cpp": "51b9b19b5592cdc58a2afb9826edc47b33fd4bf2a6cb41cd2a0070860b014392",
+    "src/include/httplib_wrapper.hpp": "fef96c79c81c919e0ea4a9e387433cbfca9d439b9c319a82ac21fdc2e2a0a31e",
+    "test/native_extension_test.py": "b93920cf80068a8c61747475090de25719735e07dec8b63308196dc3335727db",
+    "test/sql/lifecycle.test": "5b3ab48e497fb3c8a85cd5401642af88feb6d5309c370e9efafc5d104f83f5cb",
+    ".github/workflows/MainDistributionPipeline.yml": "45cc2a89bda8b4dc615732c1607d4c3671d10b036c588d8d617db2894597c97a",
+    "src/include/simple_ui.hpp": "5d1d676d8f20f71b2c5d20e67c26111467b3f82d97faeaf736f6d863a6d4eda4",
+    "src/include/export_ui.hpp": "8714dc45a914bb56f7e36632b667a1996042b3de2b07b979be477e27d73119ac",
+    "test/export.test.cjs": "85bc8e5890f037f6771bb3579c254e960e6e41c3cd67119676ebe38031de8cfd",
+    "third_party/httplib/cpp-httplib.h": "e4991b69f485bc39027e34b3c101c20f5cd8cc9a34d871da04108b50694558e3",
+    "test/native_http_test.cpp": "bacfd453bff2c3ef4d396a86378a77572b8bf98279368d54b99a31568e894786",
+    "test/native_server_test.py": "e1456268d0bb10405740c77168b07d63b2ea3e8fc6e54005c85a7058881718a7",
+    "test/sql/server.test": "a0515d459b15bc1260956002b78fe32b80c60134ada9cf09716f9f5c4bf2e4b2",
+    "Makefile": "3f76f89d6165352b3ab302ad8812f55bb01bdcf51898c3e571cdd4f2ebeff366"
+  },
+  "merged_parallel_fix": "9af182c6bac10cb4dd970ae04afed43b28526475"
+}

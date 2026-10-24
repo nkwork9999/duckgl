@@ -6,11 +6,13 @@ const http = require('node:http');
 const { chromium } = require('playwright');
 const source = fs.readFileSync(path.join(__dirname, '../src/include/simple_ui.hpp'), 'utf8');
 const html = source.match(/R"DUCKUI\(([\s\S]*)\)DUCKUI"/)[1];
+const exportJS = fs.readFileSync(path.join(__dirname, '../src/include/export_ui.hpp'), 'utf8').match(/R\"DUCKEXPORT\(([\s\S]*)\)DUCKEXPORT\"/)[1];
 const isMap = html.includes('<title>DuckGL</title>');
 let queryCount = 0, tablesFail = false, geoURL = '';
 const rows = [{name:'<img src=x onerror="window.injected=true">', amount:0}, {name:'quoted,"value"',amount:null}, {name:'Tokyo',amount:12.5}];
 const server = http.createServer(async (request, response) => {
     const url = new URL(request.url, 'http://localhost');
+    if (url.pathname === '/export.js') { response.setHeader('Content-Type','application/javascript'); response.end(exportJS); return; }
     if (url.pathname === '/') { response.setHeader('Content-Type','text/html'); response.end(html); return; }
     response.setHeader('Content-Type','application/json');
     if (url.pathname === '/api/tables') {
