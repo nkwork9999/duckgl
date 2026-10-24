@@ -17,6 +17,6 @@
 #endif
 
 // Include the unchanged vendored cpp-httplib implementation.
-#include "../../third_party/httplib/httplib.h"
+#include "../../third_party/httplib/cpp-httplib.h"
 
 #endif // HTTPLIB_WRAPPER_H

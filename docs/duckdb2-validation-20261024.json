@@ -48,13 +48,13 @@
   },
   "source_sha256": {
     "src/duckgl_extension.cpp": "51b9b19b5592cdc58a2afb9826edc47b33fd4bf2a6cb41cd2a0070860b014392",
-    "src/include/httplib_wrapper.hpp": "e97a6a1e082b58b9f5f65cc48ceb9c14f3d45fb3ddc4a87bf4598ef7329a4703",
-    "third_party/httplib/httplib.h": "e4991b69f485bc39027e34b3c101c20f5cd8cc9a34d871da04108b50694558e3",
+    "src/include/httplib_wrapper.hpp": "fef96c79c81c919e0ea4a9e387433cbfca9d439b9c319a82ac21fdc2e2a0a31e",
     "test/native_extension_test.py": "b93920cf80068a8c61747475090de25719735e07dec8b63308196dc3335727db",
     "test/sql/lifecycle.test": "5b3ab48e497fb3c8a85cd5401642af88feb6d5309c370e9efafc5d104f83f5cb",
     ".github/workflows/MainDistributionPipeline.yml": "07024e45ec6b6f611beae804376a2e35a360753cf5e774bc61779bd7b98e4e81",
     "src/include/simple_ui.hpp": "5d1d676d8f20f71b2c5d20e67c26111467b3f82d97faeaf736f6d863a6d4eda4",
     "src/include/export_ui.hpp": "8714dc45a914bb56f7e36632b667a1996042b3de2b07b979be477e27d73119ac",
-    "test/export.test.cjs": "85bc8e5890f037f6771bb3579c254e960e6e41c3cd67119676ebe38031de8cfd"
+    "test/export.test.cjs": "85bc8e5890f037f6771bb3579c254e960e6e41c3cd67119676ebe38031de8cfd",
+    "third_party/httplib/cpp-httplib.h": "e4991b69f485bc39027e34b3c101c20f5cd8cc9a34d871da04108b50694558e3"
   }
 }
