@@ -108,3 +108,18 @@ MIT License - see [LICENSE](LICENSE) file
 - [MapLibre GL](https://maplibre.org/)
 - [Deck.gl](https://deck.gl/)
 - [DuckDB Community Extensions](https://github.com/duckdb/community-extensions)
+
+### Save HTML and PDF reports
+
+Run a query or load a spatial table, then choose **Export HTML** or **Export PDF**.
+HTML downloads a standalone report that opens offline. It includes the last
+successful SQL query, every returned result row (not just the on-screen 200-row
+preview), and an SVG geometry overview when a map table is loaded. The overview
+uses longitude/latitude with north up and excludes base-map tiles; it is not a
+capture of the current map camera. Saved HTML contains no scripts or SQL requests.
+
+PDF opens the same report in the browser print dialog. Choose **Save as PDF**.
+Text remains selectable, including Japanese; table headers repeat across pages.
+The snapshot keeps the SQL that produced the results even if the editor is
+changed afterward. Reports can include data from the loaded map table and a
+separate last successful query, each labeled separately.

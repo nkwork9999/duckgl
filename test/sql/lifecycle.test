@@ -1,0 +1,32 @@
+# name: test/sql/lifecycle.test
+# group: [sql]
+
+require duckgl
+
+statement ok
+LOAD duckgl;
+
+query I
+SELECT count(*) FROM range(4099) WHERE duckgl_stop() = 'No server running';
+----
+4099
+
+statement error
+SELECT duckgl_start('127.0.0.1', 0);
+----
+HTTP port must be between 1 and 65535
+
+statement error
+SELECT duckgl_start('127.0.0.1', 65536);
+----
+HTTP port must be between 1 and 65535
+
+query I
+SELECT 42;
+----
+42
+
+query II
+SELECT CAST(duckgl_start(NULL, 19899) IS NULL AS INTEGER), CAST(duckgl_start('127.0.0.1', NULL) IS NULL AS INTEGER);
+----
+1	1

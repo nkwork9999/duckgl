@@ -1,0 +1,60 @@
+{
+  "date": "2026-10-24",
+  "community_pr": "https://github.com/duckdb/community-extensions/pull/2927",
+  "duckdb": {
+    "community_release_alias": "v2.0.0",
+    "commit": "d54cbbe3df17e8e5ce68312f483b4155836112aa",
+    "local_sdk_version": "v2.0.0-alpha49307",
+    "local_platform": "osx_arm64",
+    "profile": "Debug",
+    "source_ci_tools": "v2.0-cyanoptera"
+  },
+  "regressions_observed_before_fix": [
+    "private QueryResult names/types compile errors",
+    "PREPARE started the HTTP server before EXECUTE",
+    "only 3 of 4099 stop results initialized",
+    "multirow start returned one message and two empty strings",
+    "invalid port was reported as INTERNAL because start was not fallible"
+  ],
+  "validation": {
+    "project_unit_script": "passed",
+    "official_sdk_format_check": "passed",
+    "native_extension_build_load_http": "passed",
+    "http_filtered_rows_checked": 4001,
+    "multirow_start_results": 3,
+    "multirow_stop_results": 4099,
+    "native_sql": {
+      "combined_cases": 2,
+      "combined_assertions": 14,
+      "skips": 0,
+      "local_harness": "same SQL with require replaced by mandatory absolute LOAD; matching actual SDK unittest runner"
+    },
+    "cross_platform_ci": "pending_new_source_and_community_revision",
+    "existing_browser_suite": "passed",
+    "export_browser_suite": {
+      "status": "passed",
+      "rows": 305,
+      "offline_html": true,
+      "html_escaping_and_no_scripts": true,
+      "geometry": "SVG points, lines, polygon holes; no base-map tiles or current camera snapshot",
+      "pdf": "actual Chromium print-engine PDF; selectable Japanese and repeated table headers",
+      "visual_review": "rendered first, first-table and last PDF pages inspected",
+      "sample_pdf_sha256": "71b86f16a4461e5c5f689e0727c33ef66f6904741b3c84d4802ac45e9e38174f"
+    }
+  },
+  "vendor": {
+    "cpp_httplib_moved_without_content_change": true,
+    "sha256": "e4991b69f485bc39027e34b3c101c20f5cd8cc9a34d871da04108b50694558e3"
+  },
+  "source_sha256": {
+    "src/duckgl_extension.cpp": "51b9b19b5592cdc58a2afb9826edc47b33fd4bf2a6cb41cd2a0070860b014392",
+    "src/include/httplib_wrapper.hpp": "e97a6a1e082b58b9f5f65cc48ceb9c14f3d45fb3ddc4a87bf4598ef7329a4703",
+    "third_party/httplib/httplib.h": "e4991b69f485bc39027e34b3c101c20f5cd8cc9a34d871da04108b50694558e3",
+    "test/native_extension_test.py": "b93920cf80068a8c61747475090de25719735e07dec8b63308196dc3335727db",
+    "test/sql/lifecycle.test": "5b3ab48e497fb3c8a85cd5401642af88feb6d5309c370e9efafc5d104f83f5cb",
+    ".github/workflows/MainDistributionPipeline.yml": "07024e45ec6b6f611beae804376a2e35a360753cf5e774bc61779bd7b98e4e81",
+    "src/include/simple_ui.hpp": "5d1d676d8f20f71b2c5d20e67c26111467b3f82d97faeaf736f6d863a6d4eda4",
+    "src/include/export_ui.hpp": "8714dc45a914bb56f7e36632b667a1996042b3de2b07b979be477e27d73119ac",
+    "test/export.test.cjs": "85bc8e5890f037f6771bb3579c254e960e6e41c3cd67119676ebe38031de8cfd"
+  }
+}

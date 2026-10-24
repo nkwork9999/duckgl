@@ -13,11 +13,8 @@ include_directories(src/include)
 include_directories(third_party/httplib)
 
 # OpenSSL機能を完全に無効化
-add_compile_definitions(
-    CPPHTTPLIB_OPENSSL_SUPPORT=0
-    CPPHTTPLIB_ZLIB_SUPPORT=0
-    CPPHTTPLIB_BROTLI_SUPPORT=0
-)
+add_compile_definitions(CPPHTTPLIB_OPENSSL_SUPPORT=0 CPPHTTPLIB_ZLIB_SUPPORT=0
+                        CPPHTTPLIB_BROTLI_SUPPORT=0)
 
 set(EXTENSION_SOURCES src/duckgl_extension.cpp)
 
@@ -30,7 +27,7 @@ target_link_libraries(${EXTENSION_NAME} Threads::Threads)
 target_link_libraries(${LOADABLE_EXTENSION_NAME} Threads::Threads)
 
 install(
-    TARGETS ${EXTENSION_NAME}
-    EXPORT "${DUCKDB_EXPORT_SET}"
-    LIBRARY DESTINATION "${INSTALL_LIB_DIR}"
-    ARCHIVE DESTINATION "${INSTALL_LIB_DIR}")
+  TARGETS ${EXTENSION_NAME}
+  EXPORT "${DUCKDB_EXPORT_SET}"
+  LIBRARY DESTINATION "${INSTALL_LIB_DIR}"
+  ARCHIVE DESTINATION "${INSTALL_LIB_DIR}")
