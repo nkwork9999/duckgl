@@ -40,3 +40,9 @@ Chromium PDF, and mobile export controls. Visualization libraries and HTTP are
 mocked; report generation and PDF rendering are real. Set `DUCKGL_EXPORT_DIR` to
 retain the generated HTML/PDF/PNG for visual inspection. The browser workflow
 runs this test after the existing browser suite.
+
+`test/native_server_test.py` retains the parallel CI follow-up's SQL/HTTP
+regressions: CLI input errors and recovery, stop results across4,097 rows,
+server lifecycle, NULL startup and HTTP rows. It accepts the same `--duckdb` and
+`--extension` arguments. The Linux post-build command executes both native
+scripts; the original `test/sql/server.test` also remains in the normal suite.

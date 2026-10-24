@@ -24,8 +24,8 @@
     "multirow_start_results": 3,
     "multirow_stop_results": 4099,
     "native_sql": {
-      "combined_cases": 2,
-      "combined_assertions": 14,
+      "combined_cases": 4,
+      "combined_assertions": 24,
       "skips": 0,
       "local_harness": "same SQL with require replaced by mandatory absolute LOAD; matching actual SDK unittest runner"
     },
@@ -40,7 +40,8 @@
       "pdf": "actual Chromium print-engine PDF; selectable Japanese and repeated table headers",
       "visual_review": "rendered first, first-table and last PDF pages inspected",
       "sample_pdf_sha256": "71b86f16a4461e5c5f689e0727c33ef66f6904741b3c84d4802ac45e9e38174f"
-    }
+    },
+    "parallel_native_sql_http_script": "passed"
   },
   "vendor": {
     "cpp_httplib_moved_without_content_change": true,
@@ -51,10 +52,14 @@
     "src/include/httplib_wrapper.hpp": "fef96c79c81c919e0ea4a9e387433cbfca9d439b9c319a82ac21fdc2e2a0a31e",
     "test/native_extension_test.py": "b93920cf80068a8c61747475090de25719735e07dec8b63308196dc3335727db",
     "test/sql/lifecycle.test": "5b3ab48e497fb3c8a85cd5401642af88feb6d5309c370e9efafc5d104f83f5cb",
-    ".github/workflows/MainDistributionPipeline.yml": "07024e45ec6b6f611beae804376a2e35a360753cf5e774bc61779bd7b98e4e81",
+    ".github/workflows/MainDistributionPipeline.yml": "45cc2a89bda8b4dc615732c1607d4c3671d10b036c588d8d617db2894597c97a",
     "src/include/simple_ui.hpp": "5d1d676d8f20f71b2c5d20e67c26111467b3f82d97faeaf736f6d863a6d4eda4",
     "src/include/export_ui.hpp": "8714dc45a914bb56f7e36632b667a1996042b3de2b07b979be477e27d73119ac",
     "test/export.test.cjs": "85bc8e5890f037f6771bb3579c254e960e6e41c3cd67119676ebe38031de8cfd",
-    "third_party/httplib/cpp-httplib.h": "e4991b69f485bc39027e34b3c101c20f5cd8cc9a34d871da04108b50694558e3"
-  }
+    "third_party/httplib/cpp-httplib.h": "e4991b69f485bc39027e34b3c101c20f5cd8cc9a34d871da04108b50694558e3",
+    "test/native_http_test.cpp": "bacfd453bff2c3ef4d396a86378a77572b8bf98279368d54b99a31568e894786",
+    "test/native_server_test.py": "e1456268d0bb10405740c77168b07d63b2ea3e8fc6e54005c85a7058881718a7",
+    "test/sql/server.test": "a0515d459b15bc1260956002b78fe32b80c60134ada9cf09716f9f5c4bf2e4b2"
+  },
+  "merged_parallel_fix": "9af182c6bac10cb4dd970ae04afed43b28526475"
 }

@@ -18,6 +18,9 @@ int main() {
 	auto rows = client.Post("/api/query", "SELECT * FROM analytics.orders", "text/plain");
 	assert(rows && rows->body.find("\\\"value\\\"") != std::string::npos &&
 	       rows->body.find("\"amount\":0") != std::string::npos && rows->body.find("null") != std::string::npos);
+	auto metadata = client.Post(
+	    "/api/query", R"sql(SELECT 7 AS "quoted ""column", true AS flag, NULL::INTEGER AS missing)sql", "text/plain");
+	assert(metadata && metadata->body == R"json([{"quoted \"column":7,"flag":true,"missing":null}])json");
 	auto error = client.Post("/api/query", "SELECT * FROM nonexistent", "text/plain");
 	assert(error && error->body.find("\"error\"") != std::string::npos);
 	server.Stop();

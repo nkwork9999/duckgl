@@ -1,0 +1,26 @@
+# name: test/sql/server.test
+# group: [sql]
+
+require duckgl
+
+# A port validation error must remain a recoverable user error in DuckDB 2.
+statement error
+SELECT duckgl_start('127.0.0.1', 0)
+----
+HTTP port must be between 1 and 65535
+
+query I
+SELECT 42
+----
+42
+
+# Side-effecting stop calls must produce one result per input row across batches.
+query I
+SELECT count(*) FROM (SELECT duckgl_stop() AS message FROM range(4097)) WHERE message = 'No server running'
+----
+4097
+
+query I
+SELECT duckgl_start(NULL, 19899) IS NULL
+----
+true

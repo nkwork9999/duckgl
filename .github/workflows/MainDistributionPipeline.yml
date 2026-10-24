@@ -29,7 +29,9 @@ jobs:
       duckdb_version: v2.0.0
       ci_tools_version: v2.0-cyanoptera
       duckdb_commit: d54cbbe3df17e8e5ce68312f483b4155836112aa
-      post_build_command: python3 test/native_extension_test.py --duckdb build/release/duckdb --extension build/release/extension/duckgl/duckgl.duckdb_extension
+      post_build_command: >-
+        python3 test/native_server_test.py --duckdb build/release/duckdb --extension build/release/extension/duckgl/duckgl.duckdb_extension
+        && python3 test/native_extension_test.py --duckdb build/release/duckdb --extension build/release/extension/duckgl/duckgl.duckdb_extension
       extension_name: duckgl
 
   code-quality-check:
