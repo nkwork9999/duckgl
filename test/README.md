@@ -20,7 +20,7 @@ It checks HTML routing, real table discovery, JSON values and errors, and restar
 It uses loopback ports 19881 (DuckGL) and 19882 (DuckDBI).
 
 DuckDB v2.0.0 community CI uses source `d54cbbe3df17e8e5ce68312f483b4155836112aa`
-(the current untagged SDK reports `v2.0.0-alpha49307`). Build/load the matching
+(the official `v2.0.0` tag points to this commit). Build/load the matching
 artifact and run:
 
 ```sh
