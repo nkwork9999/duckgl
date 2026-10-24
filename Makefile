@@ -1,5 +1,5 @@
 PROJ_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
-DUCKDB_VERSION=v1.5.3
+DUCKDB_VERSION=v2.0.0
 
 # Configuration of extension
 EXT_NAME=duckgl

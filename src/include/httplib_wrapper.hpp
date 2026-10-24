@@ -17,6 +17,6 @@
 #endif
 
 // 同じディレクトリのhttplib.hをインクルード
-#include "httplib.h"
+#include "../../third_party/httplib/httplib.h"
 
 #endif // HTTPLIB_WRAPPER_H
