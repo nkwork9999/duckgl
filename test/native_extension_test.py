@@ -20,7 +20,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--duckdb", required=True, type=Path)
     parser.add_argument("--extension", required=True, type=Path)
-    parser.add_argument("--spatial", action="store_true", help="Also test real spatial data (requires installed spatial)")
+    parser.add_argument(
+        "--spatial", action="store_true", help="Also test real spatial data (requires installed spatial)"
+    )
     args = parser.parse_args()
     extension_name = "duckgl"
     with socket.socket() as sock:
@@ -101,7 +103,11 @@ def main():
 
             tables = json.loads(get("/api/tables"))
             assert {"table_name": "orders", "table_schema": "analytics", "table_catalog": "memory"} in tables, tables
-            assert {"table_name": "orders", "table_schema": "analytics", "table_catalog": "archive'.2026\""} in tables, tables
+            assert {
+                "table_name": "orders",
+                "table_schema": "analytics",
+                "table_catalog": "archive'.2026\"",
+            } in tables, tables
             # Column names must retain raw spelling, UTF-8 and JSON escapes;
             # boolean/numeric/NULL values must retain their JSON types.
             assert query(
@@ -124,8 +130,15 @@ def main():
                 "SELECT 9007199254740991::BIGINT AS safe, 9007199254740993::BIGINT AS id, "
                 "-9007199254740993::BIGINT AS negative, 18446744073709551615::UBIGINT AS unsigned, "
                 "170141183460469231731687303715884105727::HUGEINT AS huge"
-            ) == [{"safe": 9007199254740991, "id": "9007199254740993", "negative": "-9007199254740993",
-                   "unsigned": "18446744073709551615", "huge": "170141183460469231731687303715884105727"}]
+            ) == [
+                {
+                    "safe": 9007199254740991,
+                    "id": "9007199254740993",
+                    "negative": "-9007199254740993",
+                    "unsigned": "18446744073709551615",
+                    "huge": "170141183460469231731687303715884105727",
+                }
+            ]
             rows = query(
                 "SELECT i AS \"行番号\", i % 2 = 0 AS even, "
                 "CASE WHEN i % 3 = 0 THEN NULL ELSE i END AS nullable "
@@ -165,16 +178,31 @@ def main():
                     assert "error" not in result, result
                 primary = json.loads(get("/api/geojson/places?schema=analytics"))
                 assert primary["features"][0]["geometry"] == {"type": "Point", "coordinates": [139.7, 35.7]}, primary
-                attached = json.loads(get("/api/geojson/places?" + urlencode({"schema": "analytics", "catalog": "archive'.2026\""})))
-                assert attached["features"] == [{"type": "Feature", "geometry": {"type": "Point", "coordinates": [135.5, 34.7]},
-                    "properties": {"geometry": "this is text", "enabled": True, "disabled": False, "id": "9007199254740993", "missing": None}}], attached
+                attached = json.loads(
+                    get("/api/geojson/places?" + urlencode({"schema": "analytics", "catalog": "archive'.2026\""}))
+                )
+                assert attached["features"] == [
+                    {
+                        "type": "Feature",
+                        "geometry": {"type": "Point", "coordinates": [135.5, 34.7]},
+                        "properties": {
+                            "geometry": "this is text",
+                            "enabled": True,
+                            "disabled": False,
+                            "id": "9007199254740993",
+                            "missing": None,
+                        },
+                    }
+                ], attached
                 multiple = json.loads(get("/api/geojson/multiple?schema=analytics"))
                 assert multiple["features"][0]["geometry"] == {"type": "Point", "coordinates": [12, 34]}, multiple
                 nonspatial = json.loads(get("/api/geojson/nonspatial?schema=analytics"))
                 assert nonspatial["features"] == [] and "No geometry column" in nonspatial["error"], nonspatial
                 unknown = json.loads(get("/api/geojson/places?schema=analytics&catalog=missing"))
                 assert unknown["features"] == [] and "error" in unknown, unknown
-                print("Spatial regressions passed: attached catalogs, arbitrary geometry names, typed attributes, deterministic detection")
+                print(
+                    "Spatial regressions passed: attached catalogs, arbitrary geometry names, typed attributes, deterministic detection"
+                )
             print(f"{extension_name}: loaded extension HTTP regressions passed (4001 rows)")
         finally:
             if process.poll() is None:

@@ -15,6 +15,7 @@ from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+
 class MapFeatures(unittest.TestCase):
     configuration = None
 
@@ -29,7 +30,10 @@ class MapFeatures(unittest.TestCase):
         cls.log = tempfile.TemporaryFile(mode="w+t")
         cls.process = subprocess.Popen(
             [str(cls.configuration.duckdb.resolve()), "-unsigned", "-batch", "-init", "/dev/null"],
-            stdin=subprocess.PIPE, stdout=cls.log, stderr=subprocess.STDOUT, text=True,
+            stdin=subprocess.PIPE,
+            stdout=cls.log,
+            stderr=subprocess.STDOUT,
+            text=True,
         )
         cls.addClassCleanup(cls.shutdown)
         extension = str(cls.configuration.extension.resolve()).replace("'", "''")
@@ -68,7 +72,9 @@ class MapFeatures(unittest.TestCase):
             raise AssertionError(output)
 
     def request(self, path, sql=None):
-        request = Request(self.base + path, data=None if sql is None else sql.encode(), headers={"Content-Type": "text/plain"})
+        request = Request(
+            self.base + path, data=None if sql is None else sql.encode(), headers={"Content-Type": "text/plain"}
+        )
         try:
             response = urlopen(request, timeout=15)
         except HTTPError as error:
@@ -80,8 +86,10 @@ class MapFeatures(unittest.TestCase):
 
     def test_columns_distinguish_geometry_types_from_names(self):
         columns = self.request("/api/columns/places")
-        self.assertEqual([(c["column_name"], c["is_geometry"]) for c in columns],
-                         [("geom", True), ("alt位置", True), ("geometry", False), ("enabled", False)])
+        self.assertEqual(
+            [(c["column_name"], c["is_geometry"]) for c in columns],
+            [("geom", True), ("alt位置", True), ("geometry", False), ("enabled", False)],
+        )
         self.assertEqual(columns[2]["data_type"], "VARCHAR")
 
     def test_explicit_geometry_column_and_missing_column(self):
@@ -100,15 +108,31 @@ class MapFeatures(unittest.TestCase):
         self.assertIn("error", error)
 
     def test_filtered_query_map_with_semicolon_and_quoted_alias(self):
-        data = self.request("/api/query-map", '''WITH q AS (SELECT * FROM places)
-            SELECT "alt位置" AS "shape位置", 'a; b' AS label, enabled FROM q WHERE enabled;''')
-        self.assertEqual(data["features"], [{"type": "Feature", "geometry": {"type": "Point", "coordinates": [56, 78]},
-                         "properties": {"label": "a; b", "enabled": True}}])
+        data = self.request(
+            "/api/query-map",
+            '''WITH q AS (SELECT * FROM places)
+            SELECT "alt位置" AS "shape位置", 'a; b' AS label, enabled FROM q WHERE enabled;''',
+        )
+        self.assertEqual(
+            data["features"],
+            [
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [56, 78]},
+                    "properties": {"label": "a; b", "enabled": True},
+                }
+            ],
+        )
         empty = self.request("/api/query-map", "SELECT geom FROM places WHERE false")
         self.assertEqual(empty["features"], [])
 
     def test_query_map_rejects_non_select_and_multiple_statements(self):
-        for sql in ["CREATE TABLE forbidden AS SELECT 1", "SELECT geom FROM places; DROP TABLE places", "SELECT 42 AS id", ""]:
+        for sql in [
+            "CREATE TABLE forbidden AS SELECT 1",
+            "SELECT geom FROM places; DROP TABLE places",
+            "SELECT 42 AS id",
+            "",
+        ]:
             with self.subTest(sql=sql):
                 self.assertIn("error", self.request("/api/query-map", sql))
         self.assertEqual(self.request("/api/query", "SELECT count(*) AS n FROM places"), [{"n": 1}])
