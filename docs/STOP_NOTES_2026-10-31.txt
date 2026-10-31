@@ -1,0 +1,136 @@
+再開追記: ユーザーの「再開」により停止解除。
+最終版のunit/browser/exportテストは再実行して成功。
+以下は停止時点の履歴であり、現在のGit状態はgit status/logを参照。
+
+DuckGL 作業停止・再開メモ
+記録日: 2026-10-31 (Asia/Tokyo)
+停止理由: ユーザーの「現状の内容を記録してstop メモか何か」という明示指示。
+この記録後は作業を停止する。再開・コミット・pushは行っていない。
+
+作業場所とGit状態
+- Repository: /Users/nk/Desktop/duckgl
+- Branch: main
+- HEAD: 41265fd Preserve spatial data types and support attached database selection
+- 前回の4項目（大きな整数ID、GeoJSON型保持、任意名GEOMETRY検出、複数DB選択）は
+  improve/catalog-aware-tablesでコミットし、ローカルmainへfast-forward済み。
+- origin/mainのローカル追跡refはea25b9e。mainはそのrefより1コミット先。
+- 今回の10機能追加とREADME整備はmainの作業ツリーに未コミットで残っている。
+- GitHubへのpushは実施していない。停止前の依頼は、完成後にmainへ統合・反映すること。
+- 「全作業完了・GitHub反映済み」とは扱わない。
+
+今回実装した10機能（いずれも作業ツリー内）
+1. SQL結果のCSVダウンロード（UTF-8 BOM、CRLF、引用符・改行、全返却行）。
+2. SQL結果のJSONダウンロード（型と大きなIDの文字列を保持）。
+3. 読み込んだ地図データのGeoJSONダウンロード。
+4. 地形状の独立SVG出力。
+5. 地形状の1000x450 PNG出力（SVGを実際にcanvasで描画）。
+6. 操作できる独立HTML地図出力（データ・カメラ・地図SQLを内包）。
+7. 列名・型の確認と、複数GEOMETRY列からの明示選択。
+8. Source CRS指定とWGS84への変換。ST_Transform(..., true)でX/Y軸順を固定。
+9. 単一SELECT/CTEの結果を直接地図化するMap query。
+10. 地物クリックによる属性表示。false、0、NULL、日本語、HTML文字列を安全に表示。
+
+追加の表示改善
+- SQLのMap query/Run query操作を1行のボタングループに整理。
+- モバイル結果表は横スクロールにし、数値・見出しの過度な折り返しを防止。
+
+主な変更ファイル
+- src/duckgl_extension.cpp
+  /api/columns/{table}、/api/query-mapを追加。
+  geometry/source_crsパラメータ対応。query-mapはパーサで単一SELECTのみ許可し、
+  Prepareで列を検査してからGeoJSONに変換する。既存のDB/schema引用処理を共有化。
+- src/include/simple_ui.hpp
+  追加コントロール、列情報取得、SQL地図化、属性パネル、モバイル調整。
+- src/include/export_ui.hpp
+  6種類のDownload、独立HTML生成、安全なJSON埋め込み、地図SQLの出力。
+- README.md
+  新機能一覧、8出力形式の比較、オフライン可否、座標系、SQL例、API、
+  ビルド・テスト、トラブルシュートを再構成。実画面スクリーンショットを掲載。
+- docs/UPDATING.md / IMPROVEMENTS.md / test/README.md
+  DuckDB 2.0.0のバージョン固定方法と実際のテスト・追加機能に合わせて更新。
+- .github/workflows/unit-tests.yml
+  browserジョブに node --test test/features.test.cjs を追加。
+
+未追跡の新規ファイル（再開時にgit add対象へ含める）
+- images/duckgl-workspace.png
+- test/features.test.cjs
+- test/native_map_features_test.py
+- このメモ docs/STOP_NOTES_2026-10-31.txt
+
+確認済み
+- bash scripts/test-unit.sh: 最終状態で成功。
+- clang-format --dry-run --Werror: 変更C++/関連ヘッダで成功。
+- git diff --check: 停止時点で成功。
+- test/browser.test.cjs と test/export.test.cjs: 今回の機能追加後に成功。
+  ただし、その後にモバイルCSS・ボタン配置を微調整したため、再開時に最終版での
+  再実行を推奨。調整後の表示は実ブラウザと新規テストで確認済み。
+- test/features.test.cjs:
+  最終実行はNode v22.13.0 + installed Chrome、11 passed / 0 failed / 0 skipped、exit 0。
+  CSV/JSON/GeoJSON/SVG/PNG/独立HTML、列選択、CRS送信、SQL地図、属性、モバイルを検証。
+- test/native_extension_test.py --spatial:
+  最終ビルドで成功。実際のDuckDB 2.0.0/spatial、4001行、DB分離、属性型・ID等。
+- test/native_server_test.py: 最終ビルドで成功。
+- test/native_map_features_test.py: 最終ビルドで6 tests、OK。
+  EPSG:3857→WGS84の経度10度を小数7桁まで検証。Unicode列、明示的な地図列、
+  CTE/WHERE、セミコロンを含む文字列、複数文/DDL拒否と未実行も検証。
+- 実際のMapLibre GL 3.6.0 + Deck.gl 9.0.0 + Cartoタイルで、ネイティブサーバの
+  citiesデータ3点を描画。ページエラーなし。
+- その画面から出力した独立HTMLを、DuckGLサーバ停止後にfile://で開き直した。
+  実ライブラリで3点を描画、API呼び出し0、ページエラーなし。画像も目視確認済み。
+
+テスト中に起きたこと（隠さず記録）
+- 最初のテスト実行は未実装機能のため意図どおり失敗した後、実装して通過した。
+- モバイル表の横スクロールテストを追加し、未対応時の失敗を確認してからCSSを修正。
+- 途中のChrome実行でbrowser closedエラーが1回、終了時watchdog/CVDisplayLink診断も発生。
+  新規suiteは明示的context cleanup、fixture試験の--disable-gpu、Node 22で最終成功。
+  古いNodeの全体after hookでは終了待ちが続いたためdescribeでsuiteを囲んだ。
+- 途中の古いテストプロセスは対象を確認して停止した。最終Node 22 suiteは自然終了。
+  停止依頼後にタスク所有の実行中テストを確認した時点では残存対象なし。
+- Linux/WindowsやGitHub Actionsの今回差分は未検証。pushしていないため今回のCI未実行。
+
+出力仕様の重要点
+- 既存HTML/PDFはオフラインの帳票。HTMLはスクリプトやSQLリクエストを含まない。
+- 新規Interactive HTMLはDuckGLサーバを不要にするが、地図ライブラリとタイルに
+  インターネット接続が必要。SQLの再実行はしない。
+- SVG/PNG/帳票地図は全形状の経緯度による概略図で、現在のカメラや背景タイルの
+  スクリーンショットではない。READMEに明示済み。
+- Source CRSはユーザー指定。座標の範囲から自動推定はしない。
+- Map queryと通常SQL結果は別々の最後に成功したスナップショットを保持する。
+- CSVのNULLは空欄。JSONの安全整数範囲外は文字列。小数は通常のブラウザ精度。
+
+再開時に残る作業
+1. このメモとgit status/diffを読み、未コミット変更を保持する。
+2. 最終版の既存browser/exportテストを必要に応じて再実行し、最終レビューする。
+3. READMEのリンク・記述と実装の整合、CI設定を確認する。
+4. ユーザーの再開指示があったら今回差分と新規ファイルをmainへコミットする。
+5. origin/mainを再fetchして他の更新を確認し、必要なら統合する。force pushしない。
+6. ユーザーが依頼したGitHub mainへのpushとCI確認を行い、実際の結果を報告する。
+現時点ではユーザーが停止を指示しているので、これらを自動的に進めない。
+
+再開用のコマンド
+cd /Users/nk/Desktop/duckgl
+bash scripts/test-unit.sh
+UI_BROWSER_CHANNEL=chrome /Users/nk/.nvm/versions/node/v22.13.0/bin/node test/browser.test.cjs
+UI_BROWSER_CHANNEL=chrome /Users/nk/.nvm/versions/node/v22.13.0/bin/node test/export.test.cjs
+UI_BROWSER_CHANNEL=chrome /Users/nk/.nvm/versions/node/v22.13.0/bin/node --test test/features.test.cjs
+
+一時ファイル（/private/tmpは将来消える可能性あり）
+/private/tmp/duckgl-ten-features/
+- duckdb: 公式v2.0.0 macOS arm64 CLI。
+- duckgl.duckdb_extension: 最終ソースから手動ビルドし、v2.0.0/osx_arm64/CPPメタデータ付与。
+- src/include/ と .clang-format: d54cbbe3df17e8e5ce68312f483b4155836112aaから取得。
+- bin/open: テスト時に既定ブラウザのタブを増やさないためのタスク専用no-op。
+- preview.cjs: 実ネイティブHTTP/UIと独立HTML再オープンの確認用。
+- interactive-map.html / interactive-map.png / mobile.png: 実際の出力・目視確認用。
+- features-run.log: 途中のChrome診断ログ（最終Node 22実行のログではない）。
+これらは停止時には削除せず、再開に利用できるよう残した。
+
+ネイティブ試験の例（一時ファイルが残っている場合）
+PATH="/private/tmp/duckgl-ten-features/bin:$PATH" python3 test/native_extension_test.py --duckdb /private/tmp/duckgl-ten-features/duckdb --extension /private/tmp/duckgl-ten-features/duckgl.duckdb_extension --spatial
+PATH="/private/tmp/duckgl-ten-features/bin:$PATH" python3 test/native_server_test.py --duckdb /private/tmp/duckgl-ten-features/duckdb --extension /private/tmp/duckgl-ten-features/duckgl.duckdb_extension
+PATH="/private/tmp/duckgl-ten-features/bin:$PATH" python3 test/native_map_features_test.py --duckdb /private/tmp/duckgl-ten-features/duckdb --extension /private/tmp/duckgl-ten-features/duckgl.duckdb_extension
+
+調査した参考資料
+- kepler.gl Save and Export: https://docs.kepler.gl/docs/user-guides/k-save-and-export
+- DuckDB spatial functions: https://duckdb.org/docs/current/core_extensions/spatial/functions
+- Miniplot: /Users/nk/Desktop/miniplot/README.md と https://github.com/nkwork9999/miniplot

@@ -1,5 +1,20 @@
 # Improvement progress
 
+## Map and export capabilities — 2026-10-31
+
+Ten user-facing additions on main: CSV results, JSON results, GeoJSON data,
+standalone SVG, PNG overviews, interactive HTML maps, column inspection with
+geometry selection, source-CRS transformation, SQL query maps, and feature-property
+inspection. The README now documents each output's data source, offline behavior,
+coordinate conventions, APIs, examples, tests and troubleshooting.
+
+Validation includes browser downloads and file parsing, real PNG rendering,
+saved HTML reopening, and native DuckDB 2.0.0/spatial tests for typed columns,
+geometry selection, CRS accuracy and SELECT validation. Earlier catalog and
+large-integer fixes are retained.
+
+## Historical improvement batches
+
 Target: 100 independently reviewable improvements. Completed in this batch: 21. The target is not complete. Test cases and formatting edits are not counted separately.
 
 1. JSON column names escape quotes and control bytes.

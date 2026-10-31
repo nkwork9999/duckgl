@@ -1,148 +1,241 @@
 # DuckGL
 
-Interactive geospatial visualization extension for DuckDB - visualize spatial data on an interactive map directly from SQL.
+Explore DuckDB spatial data on an interactive map, run SQL, and export data,
+images, and shareable HTML. DuckGL runs a local HTTP server inside DuckDB and
+uses MapLibre GL and Deck.gl in your browser.
 
-## Overview
+![DuckGL workspace with table selection, SQL, export controls and a map](images/duckgl-workspace.png)
 
-DuckGL launches a local web server with an interactive map UI powered by [MapLibre GL](https://maplibre.org/) and [Deck.gl](https://deck.gl/). Browse tables, execute SQL queries, and render GeoJSON layers on a map, all from the DuckDB CLI.
+## Quick start
 
-- Interactive map with zoom/pan controls (CartoDB Positron basemap)
-- GeoJSON layer rendering for spatial data (requires DuckDB `spatial` extension)
-- Built-in SQL editor in the browser UI
-- Table browser sidebar
-- Query result table display
-- Database-aware table selection across attached databases
-- Exact large-integer IDs in query results and saved reports
-
-## Installation
+The source in this repository targets **DuckDB 2.0.0**. Use a matching extension
+build; the community package available for your DuckDB version may differ from
+this source revision.
 
 ```sql
-INSTALL duckgl FROM community;
-LOAD duckgl;
-```
-
-## Quick Start
-
-```sql
--- Load the extension
-LOAD duckgl;
-
--- Start the web server (opens browser automatically)
-SELECT duckgl_start('127.0.0.1', 8080);
-
--- Use the browser UI to:
---   1. Browse tables in the sidebar
---   2. Click a table to visualize its geometry on the map
---   3. Write and execute SQL queries
-
--- Stop the server when done
-SELECT duckgl_stop();
-```
-
-## Functions
-
-### `duckgl_start(host VARCHAR, port INTEGER) -> VARCHAR`
-
-Starts the DuckGL web server and opens the browser.
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `host` | VARCHAR | Host address to bind (e.g. `'127.0.0.1'`, `'localhost'`) |
-| `port` | INTEGER | Port number (e.g. `8080`) |
-
-Returns a status message like `DuckGL server started on 127.0.0.1:8080`.
-
-### `duckgl_stop() -> VARCHAR`
-
-Stops the running DuckGL web server.
-
-Returns `DuckGL server stopped` or `No server running`.
-
-## Geospatial Visualization
-
-DuckGL detects columns by their `GEOMETRY` type, including columns with custom
-names such as `shape` or `位置`. If a table has multiple geometry columns, it
-prefers `geometry`, `geom`, then `the_geom` (case insensitive), followed by the
-first geometry column in table order. A text column named `geometry` is ignored.
-Geometry is rendered using `ST_AsGeoJSON()`; map coordinates must be
-longitude/latitude in WGS84. Reproject other coordinate systems in SQL first.
-
-The sidebar displays and searches `database.schema` for each table. Queries,
-map requests, and saved report labels use the selected database, so identically
-named tables in attached databases remain distinct.
-
-```sql
--- Example: Load spatial data and visualize
 INSTALL spatial;
 LOAD spatial;
+INSTALL duckgl FROM community;
 LOAD duckgl;
 
 CREATE TABLE cities AS
-SELECT 'Tokyo' as name, ST_Point(139.6917, 35.6895) as geometry
-UNION ALL SELECT 'Osaka', ST_Point(135.5023, 34.6937)
-UNION ALL SELECT 'Nagoya', ST_Point(136.9066, 35.1815);
+SELECT 'Tokyo' AS name, 14000000 AS population,
+       ST_Point(139.6917, 35.6895) AS shape
+UNION ALL SELECT 'Osaka', 2750000, ST_Point(135.5023, 34.6937)
+UNION ALL SELECT 'Nagoya', 2300000, ST_Point(136.9066, 35.1815);
 
 SELECT duckgl_start('127.0.0.1', 8080);
--- Click "cities" in the sidebar to see the points on the map
+-- Select cities in the browser sidebar.
+-- Keep this DuckDB session open while using the workspace.
+
+-- When finished:
+SELECT duckgl_stop();
 ```
 
-## API Endpoints
+For a locally built extension, replace `INSTALL`/`LOAD duckgl` with
+`LOAD './build/release/extension/duckgl/duckgl.duckdb_extension';` and start the
+CLI with `duckdb -unsigned` for an unsigned development build.
 
-The web server exposes these endpoints:
+## Workspace
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | GET | Main HTML UI with map and sidebar |
-| `/api/query` | POST | Execute a SQL query (body = SQL string) |
-| `/api/tables` | GET | List available tables |
-| `/api/geojson/{table}` | GET | Get GeoJSON FeatureCollection for a table |
+Select a table to display its geometry. **Preview rows** runs a quoted,
+database-qualified `SELECT ... LIMIT 200`. **Run query** executes the SQL editor;
+Ctrl/⌘ + Enter is the keyboard shortcut. Result previews show at most 200 rows;
+query exports include every row returned by that query, including any explicit
+SQL `LIMIT`.
 
-`/api/tables` returns `table_name`, `table_schema`, and `table_catalog` for each
-table. `/api/geojson/{table}` accepts optional `schema` (default `main`) and
-`catalog` (default the connection's current database) query parameters. URL-encode
-the table path segment and parameter values when names contain special characters.
+The sidebar shows `database.schema` and searches the database, schema and table
+names. Tables with the same name in different attached databases remain distinct.
+Use **Refresh** after creating or attaching tables.
 
-SQL results and GeoJSON properties preserve Boolean and NULL values. Integer
-tokens outside JavaScript's safe range (`-9007199254740991` through
-`9007199254740991`) are returned as JSON strings to prevent rounding, for example
-`"9007199254740993"`. Other finite numeric values use JSON numbers; non-finite
-values use JSON null. Floating-point and decimal values still follow the browser's
-normal numeric precision.
+### Ten new capabilities
 
-## Requirements
+| Capability | How to use it |
+|---|---|
+| CSV results | Choose **CSV · query**, then **Download**. |
+| JSON results | Choose **JSON · query** to retain JSON types. |
+| GeoJSON data | Choose **GeoJSON · map** for the last successfully loaded geometry. |
+| SVG overview | Choose **SVG · map overview** for editable vector geometry. |
+| PNG overview | Choose **PNG · map overview** for a 1000 × 450 image. |
+| Interactive HTML map | Choose **Interactive HTML · map** for a shareable, server-independent map. |
+| Column inspection and geometry selection | Open **Columns** and select a **Geometry column**. |
+| Coordinate system conversion | Set **Source CRS**, then reload the map. |
+| SQL results on the map | Write a spatial `SELECT`, then choose **Map query**. |
+| Feature inspection | Click a feature to display its complete properties. |
 
-- **Internet connection**: Required for map tiles and frontend libraries (MapLibre GL, Deck.gl via CDN)
-- **Browser**: Any modern web browser
-- **DuckDB spatial extension**: Required for geometry visualization (`INSTALL spatial; LOAD spatial;`)
+### Geometry columns
 
-## Build
+DuckGL detects `GEOMETRY` columns by type, including arbitrary names such as
+`shape` or `位置`. **Automatic** prefers `geometry`, `geom`, then `the_geom`
+(case insensitive), followed by the first geometry column in table order.
+A text column named `geometry` is ignored.
 
-```bash
+To display a different geometry from a table with several geometry columns,
+choose it in **Geometry column**, then press **Show on map**. **Columns** lists
+all column names and SQL types for the selected table.
+
+### Coordinate accuracy
+
+**Source CRS** defaults to `EPSG:4326`. Enter the coordinate system of your input,
+for example `EPSG:3857`, and choose **Show on map** or **Map query**. DuckGL uses
+DuckDB spatial's `ST_Transform` to convert to WGS84 longitude/latitude. Coordinate
+axis order is explicitly **X/Y**: longitude/latitude for WGS84 and
+easting/northing for projected data. The input coordinate system is a user choice;
+DuckGL does not infer it from coordinate ranges.
+
+```sql
+CREATE TABLE projected_cities AS
+SELECT name,
+       ST_Transform(shape, 'EPSG:4326', 'EPSG:3857', true) AS shape
+FROM cities;
+-- Select projected_cities and set Source CRS to EPSG:3857.
+```
+
+Use **Source CRS = EPSG:4326** when your SQL already returns WGS84 geometries.
+Changing the source CRS changes the map representation and subsequent map
+exports; it does not modify the source table.
+
+### Map a SQL query
+
+Queries can filter, join or compute geometries before visualization:
+
+```sql
+SELECT name, population, shape
+FROM cities
+WHERE population >= 2500000
+ORDER BY population DESC;
+```
+
+Choose **Map query**. It accepts a single `SELECT`, including a `WITH` query,
+with at least one `GEOMETRY` result column. If the query renames a geometry
+column, choose **Automatic** or a matching column name. Its attributes are the
+other result columns. NULL geometries are omitted from the map.
+
+Map queries and tabular queries keep their last successful snapshots separately.
+Editing the SQL editor afterward does not change a saved map's SQL provenance
+or relabel existing results. Click any rendered feature to inspect values;
+Boolean, zero and NULL values remain distinguishable.
+
+## Export formats
+
+**Export HTML** and **Export PDF** create a report. The **Download format** menu
+adds data, vector/image and interactive-map exports.
+
+| Format | Contents | Opens offline | Base-map tiles |
+|---|---|---|---|
+| HTML report | Last successful tabular SQL and all its rows, plus loaded geometry and map SQL when present | Yes | No |
+| PDF report | Same report through the browser's print dialog; choose **Save as PDF** | Yes, after saving | No |
+| Interactive HTML | Embedded GeoJSON, map label, map SQL and current camera; pan/zoom and inspect features | Internet needed for libraries/tiles; DuckGL server can be stopped | Yes |
+| CSV | Last successful tabular result; UTF-8 with BOM, CRLF rows and quoted fields | Yes | — |
+| JSON | Last successful tabular result as an array of row objects | Yes | — |
+| GeoJSON | Last successful map result as a FeatureCollection, in WGS84 | Yes | No |
+| SVG | Geometry overview with north up, polygon holes and vector points/lines | Yes | No |
+| PNG | Raster version of the geometry overview, 1000 × 450 pixels | Yes | No |
+
+SVG, PNG and report maps fit the entire geometry in longitude/latitude. They are
+geometry overviews; their extent and appearance differ from the interactive
+map's current camera and basemap. Interactive HTML keeps the camera when available
+and needs no API connection or Mapbox token. It includes the loaded data, so it can
+be moved to another machine or served as a static page. Its browser fetches
+MapLibre, Deck.gl and public Carto basemap tiles when opened.
+
+CSV represents NULL as an empty field. JSON and GeoJSON retain NULL and Boolean
+values. Integer tokens outside JavaScript's safe range
+(`-9007199254740991` through `9007199254740991`) are JSON strings, for example
+`"9007199254740993"`, to retain every digit. Other finite numeric values use JSON
+numbers; non-finite numeric values use JSON null. Floating-point and decimal
+values follow normal browser numeric precision.
+
+Saved reports contain no scripts or SQL requests. Interactive HTML includes
+scripts for map interaction and safely embeds data, including Japanese, quotes,
+and strings containing HTML. Neither type runs the saved SQL when reopened.
+
+## SQL functions
+
+| Function | Result |
+|---|---|
+| `duckgl_start(host VARCHAR, port INTEGER)` | Starts the server, opens a browser and returns a status message. |
+| `duckgl_stop()` | Stops the server, or returns `No server running`. |
+
+Ports must be between 1 and 65535. Use a loopback host such as `127.0.0.1` for a
+local workspace. The server shares the running DuckDB database. It accepts SQL
+from the workspace/API, so bind it only to an interface you intend to expose.
+
+## HTTP API
+
+All data endpoints return JSON. SQL errors contain an `error` field; map errors
+also contain an empty FeatureCollection. Check `error` as well as HTTP status.
+
+| Endpoint | Method | Request / response |
+|---|---|---|
+| `/` | GET | Map workspace HTML. |
+| `/api/tables` | GET | Array of `table_name`, `table_schema`, `table_catalog`. |
+| `/api/columns/{table}` | GET | Array of `column_name`, `data_type`, `is_geometry`. |
+| `/api/query` | POST | Raw SQL body → array of row objects. |
+| `/api/geojson/{table}` | GET | Table → GeoJSON FeatureCollection. |
+| `/api/query-map` | POST | Raw single-SELECT SQL body → GeoJSON FeatureCollection. |
+
+`/api/columns/{table}` and `/api/geojson/{table}` accept `schema` (default `main`) and `catalog`
+(default the connection's current database). Map endpoints also accept
+`geometry` (result/table column name; omitted means automatic) and `source_crs`
+(default `EPSG:4326`). URL-encode table path segments and parameter values.
+
+```sh
+curl 'http://127.0.0.1:8080/api/columns/cities?schema=main'
+curl 'http://127.0.0.1:8080/api/geojson/projected_cities?geometry=shape&source_crs=EPSG%3A3857' > cities.geojson
+curl -H 'Content-Type: text/plain' --data-binary \
+  'SELECT name, shape FROM cities WHERE population >= 2500000' \
+  http://127.0.0.1:8080/api/query-map > selected-cities.geojson
+```
+
+## Build and test
+
+A C++17 compiler, CMake, Make, Python 3 and Git are needed for the extension.
+Node.js 22 and Playwright are used for browser tests. The pinned DuckDB source is
+`d54cbbe3df17e8e5ce68312f483b4155836112aa` (`v2.0.0`).
+
+```sh
+git clone --recurse-submodules https://github.com/nkwork9999/duckgl.git
+cd duckgl
 make release
+
+bash scripts/test-unit.sh
+npm ci --prefix test
+npx --prefix test playwright install chromium
+node test/browser.test.cjs
+node test/export.test.cjs
+node --test test/features.test.cjs
 ```
+
+To use installed Chrome, prefix browser commands with `UI_BROWSER_CHANNEL=chrome`.
+For real extension-loader, HTTP and spatial tests, see [test/README.md](test/README.md).
+Version/build maintenance notes are in [docs/UPDATING.md](docs/UPDATING.md).
+
+## Troubleshooting
+
+| Symptom | Action |
+|---|---|
+| Spatial extension not available | Run `INSTALL spatial; LOAD spatial;` in the matching DuckDB version. |
+| No geometry column | Select a `GEOMETRY` column; inspect **Columns** or use a spatial `SELECT`. |
+| Features are outside the expected location | Confirm **Source CRS** and X/Y axis order. |
+| Query geometry name differs from the selected table | Choose **Automatic** before **Map query**. |
+| Map libraries or tiles fail to load | Restore internet access and reload; tabular queries and offline report/data exports remain usable. |
+| Download is disabled | Run a tabular query for CSV/JSON or load geometry for map formats. |
+| PDF window does not open | Allow the workspace's pop-up, then choose **Save as PDF** in the print dialog. |
+| Extension version mismatch | Use a DuckGL build matching the runtime; this source targets DuckDB 2.0.0. |
+| Port already in use | Choose another port or stop the process occupying it. |
+
+## Related tools and references
+
+The export workflow draws on the distinction between interactive HTML, images,
+and reusable data described in [kepler.gl's export guide](https://docs.kepler.gl/docs/user-guides/k-save-and-export).
+[Miniplot](https://github.com/nkwork9999/miniplot) offers SQL-driven HTML charts;
+DuckGL applies a similar shareable-HTML workflow to spatial data.
+
+- [DuckDB spatial functions and CRS transformation](https://duckdb.org/docs/current/core_extensions/spatial/functions)
+- [MapLibre GL JS](https://maplibre.org/maplibre-gl-js/docs/)
+- [Deck.gl](https://deck.gl/)
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file
-
-## Links
-
-- [DuckDB](https://duckdb.org/)
-- [MapLibre GL](https://maplibre.org/)
-- [Deck.gl](https://deck.gl/)
-- [DuckDB Community Extensions](https://github.com/duckdb/community-extensions)
-
-### Save HTML and PDF reports
-
-Run a query or load a spatial table, then choose **Export HTML** or **Export PDF**.
-HTML downloads a standalone report that opens offline. It includes the last
-successful SQL query, every returned result row (not just the on-screen 200-row
-preview), and an SVG geometry overview when a map table is loaded. The overview
-uses longitude/latitude with north up and excludes base-map tiles; it is not a
-capture of the current map camera. Saved HTML contains no scripts or SQL requests.
-
-PDF opens the same report in the browser print dialog. Choose **Save as PDF**.
-Text remains selectable, including Japanese; table headers repeat across pages.
-The snapshot keeps the SQL that produced the results even if the editor is
-changed afterward. Reports can include data from the loaded map table and a
-separate last successful query, each labeled separately.
+MIT — see [LICENSE](LICENSE).

@@ -5,6 +5,12 @@ syntax and logic checks. Run `npm ci --prefix test`, then
 `npx --prefix test playwright install chromium` and `node test/browser.test.cjs`
 for browser regressions. Set `UI_BROWSER_CHANNEL=chrome` to use installed Chrome.
 
+`node --test test/features.test.cjs` runs eleven additional browser tests for CSV,
+JSON, GeoJSON, SVG, real PNG rasterization, interactive HTML, column selection,
+source CRS, SQL maps, safe feature-property inspection and mobile table scrolling. Downloads are read
+back and checked; the saved interactive HTML is reopened independently of the
+workspace URL. External map libraries and API data are controlled fixtures.
+
 The browser tests cover SQL identifier quoting, safe result rendering, NULL and
 zero values, table filtering/retry, keyboard execution, duplicate request
 prevention, server errors, and mobile layout. They also check catalog/schema
@@ -41,12 +47,16 @@ enable the optional spatial checks:
 ```sh
 build/release/duckdb -c 'INSTALL spatial;'
 python3 test/native_extension_test.py --duckdb build/release/duckdb --extension build/release/extension/duckgl/duckgl.duckdb_extension --spatial
+python3 test/native_map_features_test.py --duckdb build/release/duckdb --extension build/release/extension/duckgl/duckgl.duckdb_extension
 ```
 
 These checks exercise arbitrary geometry names (including Japanese and quotes),
 a non-geometry column named `geometry`, geometry-column priority, catalog isolation,
 Boolean/NULL properties and large IDs. Only installation needs network access;
 the test uses real DuckDB queries and loopback HTTP without map-library mocks.
+The map-feature suite additionally checks column type metadata, explicit geometry
+selection, EPSG:3857 → WGS84 coordinates to seven decimal places, filtered/CTE SQL
+maps, Unicode aliases and statement validation without executing rejected DDL.
 
 `node test/export.test.cjs` checks HTML download/escaping/offline behavior, all 305
 fixture rows, point/line/polygon-hole SVG output, the printable report's actual

@@ -1,23 +1,37 @@
-# Extension updating 
-When cloning this template, the target version of DuckDB should be the latest stable release of DuckDB. However, there 
-will inevitably come a time when a new DuckDB is released and the extension repository needs updating. This process goes
-as follows:
+# Updating DuckGL
 
-- Bump submodules
-  - `./duckdb` should be set to latest tagged release
-  - `./extension-ci-tools` should be set to updated branch corresponding to latest DuckDB release. So if you're building for DuckDB `v1.1.0` there will be a branch in `extension-ci-tools` named `v1.1.0` to which you should check out. 
-- Bump versions in `./github/workflows`
-  - `duckdb_version` input in `duckdb-stable-build` job in `MainDistributionPipeline.yml` should be set to latest tagged release
-  - `duckdb_version` input in `duckdb-stable-deploy` job in `MainDistributionPipeline.yml` should be set to latest tagged release
-  - the reusable workflow `duckdb/extension-ci-tools/.github/workflows/_extension_distribution.yml` for the `duckdb-stable-build` job should be set to latest tagged release
+DuckGL uses DuckDB's internal C++ extension API. Build and load against the same
+DuckDB release; a matching version string alone does not make different SDK
+revisions ABI compatible.
 
-# API changes
-DuckDB extensions built with this extension template are built against the internal C++ API of DuckDB. This API is not guaranteed to be stable.
-What this means for extension development is that when updating your extensions DuckDB target version using the above steps, you may run into the fact that your extension no longer builds properly.
+## Current pins
 
-Currently, DuckDB does not (yet) provide a specific change log for these API changes, but it is generally not too hard to figure out what has changed.
+- Runtime version / extension metadata: `v2.0.0`.
+- DuckDB SDK submodule: `d54cbbe3df17e8e5ce68312f483b4155836112aa`.
+- CI tools release line: `v2.0-cyanoptera`.
+- CI tools submodule: `b8d325c37e82160886579880707493bd358c0e62`.
 
-For figuring out how and why the C++ API changed, we recommend using the following resources:
-- DuckDB's [Release Notes](https://github.com/duckdb/duckdb/releases)
-- DuckDB's history of [Core extension patches](https://github.com/duckdb/duckdb/commits/main/.github/patches/extensions)
-- The git history of the relevant C++ Header file of the API that has changed
+Keep `DUCKDB_VERSION` in the root Makefile as the runtime release alias.
+The SDK source commit is pinned separately in the submodule and distribution
+workflow. Encoding a full source SHA as the extension's runtime version can
+prevent the official release CLI from loading it.
+
+## Upgrade procedure
+
+1. Choose a DuckDB release and the corresponding extension-ci-tools release line.
+2. Update both submodule commits intentionally. Do not track a moving main branch
+   as a substitute for a pinned SDK.
+3. Update the runtime default in `Makefile` and `duckdb_version`, `duckdb_commit`,
+   `ci_tools_version` and reusable workflow references in
+   `.github/workflows/MainDistributionPipeline.yml`.
+4. Build the extension and load it into the official release CLI with ordinary
+   version validation enabled. Use `-unsigned` only for the local unsigned artifact.
+5. Run the unit, browser, export and native integration commands in
+   [test/README.md](../test/README.md), including spatial map-feature checks.
+6. Verify the distribution matrix and community-extension build before claiming
+   cross-platform compatibility. Update README version and API notes with the change.
+
+For API changes, consult [DuckDB releases](https://github.com/duckdb/duckdb/releases)
+and the relevant headers at the selected SDK revision. Keep scalar functions with
+side effects volatile; verify PREPARE, NULL arguments, multirow vectors, recoverable
+errors, server shutdown and HTTP query results after each upgrade.

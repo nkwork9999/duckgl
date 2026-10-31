@@ -7,7 +7,9 @@
 #include "duckdb/function/scalar_function.hpp"
 #include "duckdb/main/connection.hpp"
 #include "duckdb/main/database.hpp"
+#include "duckdb/main/prepared_statement.hpp"
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
+#include "duckdb/parser/sql_statement.hpp"
 #include "web_encoding.hpp"
 #include "simple_ui.hpp"
 #include "export_ui.hpp"
@@ -31,6 +33,27 @@ private:
 	std::atomic<bool> running {false};
 	DatabaseInstance *db_instance;
 	int port;
+
+	static string TableFilter(const httplib::Request &req, const string &table_name) {
+		const auto schema = req.has_param("schema") ? req.get_param_value("schema") : "main";
+		return "table_name = " + web_encoding::SqlLiteral(table_name) +
+		       " AND table_schema = " + web_encoding::SqlLiteral(schema) + " AND table_catalog = " +
+		       (req.has_param("catalog") ? web_encoding::SqlLiteral(req.get_param_value("catalog"))
+		                                 : "current_database()");
+	}
+
+	static string GeometryExpression(const httplib::Request &req, const string &column) {
+		const auto geometry = web_encoding::SqlIdentifier(column);
+		const auto crs = req.has_param("source_crs") ? req.get_param_value("source_crs") : "EPSG:4326";
+		if (crs == "EPSG:4326") {
+			return geometry;
+		}
+		return "ST_Transform(" + geometry + ", " + web_encoding::SqlLiteral(crs) + ", 'EPSG:4326', true)";
+	}
+
+	static string GeoJSONError(const string &error) {
+		return "{\"error\":" + web_encoding::JsonString(error) + ",\"type\":\"FeatureCollection\",\"features\":[]}";
+	}
 
 	static std::string ResultToJSON(duckdb::unique_ptr<QueryResult> result) {
 		using namespace web_encoding;
@@ -168,6 +191,72 @@ public:
 			}
 		});
 
+		server->Get(R"(/api/columns/(.+))", [this](const httplib::Request &req, httplib::Response &res) {
+			try {
+				Connection conn(*db_instance);
+				auto columns = conn.Query("SELECT column_name, data_type, "
+				                          "(data_type = 'GEOMETRY' OR data_type LIKE 'GEOMETRY(%') AS is_geometry "
+				                          "FROM information_schema.columns WHERE " +
+				                          TableFilter(req, req.matches[1]) + " ORDER BY ordinal_position");
+				res.set_content(ResultToJSON(std::move(columns)), "application/json");
+			} catch (std::exception &e) {
+				res.status = 400;
+				res.set_content("{\"error\":" + web_encoding::JsonString(e.what()) + "}", "application/json");
+			}
+		});
+
+		server->Post("/api/query-map", [this](const httplib::Request &req, httplib::Response &res) {
+			try {
+				Connection conn(*db_instance);
+				auto spatial = conn.Query("LOAD spatial");
+				if (spatial->HasError()) {
+					throw InvalidInputException("Spatial extension not available");
+				}
+				auto statements = conn.ExtractStatements(req.body);
+				if (statements.size() != 1 || statements[0]->type != StatementType::SELECT_STATEMENT) {
+					throw InvalidInputException("Map query requires a single SELECT statement");
+				}
+				const auto query = statements[0]->ToString();
+				const auto source = " FROM (" + query + ") AS duckgl_source";
+				auto prepared = conn.Prepare("SELECT *" + source);
+				if (prepared->HasError()) {
+					throw InvalidInputException(prepared->GetError());
+				}
+				string geometry_column;
+				int best_priority = 4;
+				for (idx_t col = 0; col < prepared->ColumnCount(); col++) {
+					const auto type = prepared->GetTypes()[col].ToString();
+					if (type != "GEOMETRY" && type.rfind("GEOMETRY(", 0) != 0) {
+						continue;
+					}
+					const auto name = prepared->GetNames()[col].GetIdentifierName();
+					if (req.has_param("geometry") && req.get_param_value("geometry") != name) {
+						continue;
+					}
+					const auto lower_name = StringUtil::Lower(name);
+					const int priority = lower_name == "geometry"   ? 0
+					                     : lower_name == "geom"     ? 1
+					                     : lower_name == "the_geom" ? 2
+					                                                : 3;
+					if (priority < best_priority) {
+						geometry_column = name;
+						best_priority = priority;
+					}
+				}
+				if (best_priority == 4) {
+					throw InvalidInputException(
+					    "No geometry column found in query. Select a GEOMETRY column or use Automatic.");
+				}
+				auto result = conn.Query("SELECT ST_AsGeoJSON(" + GeometryExpression(req, geometry_column) +
+				                         ") AS geojson, * EXCLUDE(" + web_encoding::SqlIdentifier(geometry_column) +
+				                         ")" + source);
+				res.set_content(ResultToGeoJSONWithProperties(std::move(result)), "application/json");
+			} catch (std::exception &e) {
+				res.status = 400;
+				res.set_content(GeoJSONError(e.what()), "application/json");
+			}
+		});
+
 		server->Get(R"(/api/geojson/(.+))", [this](const httplib::Request &req, httplib::Response &res) {
 			try {
 				string table_name = req.matches[1];
@@ -187,10 +276,11 @@ public:
 
 				string check_sql =
 				    "SELECT column_name FROM information_schema.columns "
-				    "WHERE table_name = " +
-				    web_encoding::SqlLiteral(table_name) + " AND table_schema = " + web_encoding::SqlLiteral(schema) +
-				    " AND table_catalog = " +
-				    (req.has_param("catalog") ? web_encoding::SqlLiteral(catalog) : "current_database()") +
+				    "WHERE " +
+				    TableFilter(req, table_name) +
+				    (req.has_param("geometry")
+				         ? " AND column_name = " + web_encoding::SqlLiteral(req.get_param_value("geometry"))
+				         : "") +
 				    " AND (data_type = 'GEOMETRY' OR data_type LIKE 'GEOMETRY(%') "
 				    "ORDER BY CASE lower(column_name) WHEN 'geometry' THEN 0 WHEN 'geom' THEN 1 "
 				    "WHEN 'the_geom' THEN 2 ELSE 3 END, ordinal_position LIMIT 1";
@@ -213,8 +303,8 @@ public:
 
 				string geom_col = chunk->GetValue(0, 0).ToString();
 
-				string sql = "SELECT ST_AsGeoJSON(" + web_encoding::SqlIdentifier(geom_col) +
-				             ") as geojson, * EXCLUDE(" + web_encoding::SqlIdentifier(geom_col) + ") FROM " +
+				string sql = "SELECT ST_AsGeoJSON(" + GeometryExpression(req, geom_col) + ") as geojson, * EXCLUDE(" +
+				             web_encoding::SqlIdentifier(geom_col) + ") FROM " +
 				             (req.has_param("catalog") ? web_encoding::SqlIdentifier(catalog) + "." : "") +
 				             web_encoding::SqlIdentifier(schema) + "." + web_encoding::SqlIdentifier(table_name);
 				auto result = conn.Query(sql);
