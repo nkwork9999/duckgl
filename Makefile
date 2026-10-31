@@ -1,5 +1,6 @@
 PROJ_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
-DUCKDB_VERSION=v1.5.3
+# Keep the runtime version separate from the pinned SDK source commit.
+DUCKDB_VERSION ?= v2.0.0
 
 # Configuration of extension
 EXT_NAME=duckgl

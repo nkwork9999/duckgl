@@ -16,7 +16,7 @@
 #undef CPPHTTPLIB_BROTLI_SUPPORT
 #endif
 
-// 同じディレクトリのhttplib.hをインクルード
-#include "httplib.h"
+// Include the unchanged vendored cpp-httplib implementation.
+#include "../../third_party/httplib/cpp-httplib.h"
 
 #endif // HTTPLIB_WRAPPER_H

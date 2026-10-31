@@ -26,3 +26,4 @@ jobs:
       - run: npm ci --prefix test
       - run: npx --prefix test playwright install --with-deps chromium
       - run: node test/browser.test.cjs
+      - run: node test/export.test.cjs
