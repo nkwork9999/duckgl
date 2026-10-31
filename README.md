@@ -11,6 +11,8 @@ DuckGL launches a local web server with an interactive map UI powered by [MapLib
 - Built-in SQL editor in the browser UI
 - Table browser sidebar
 - Query result table display
+- Database-aware table selection across attached databases
+- Exact large-integer IDs in query results and saved reports
 
 ## Installation
 
@@ -58,7 +60,16 @@ Returns `DuckGL server stopped` or `No server running`.
 
 ## Geospatial Visualization
 
-DuckGL automatically detects geometry columns (`geometry`, `geom`, or `the_geom`) in your tables and renders them as GeoJSON layers on the map using `ST_AsGeoJSON()`.
+DuckGL detects columns by their `GEOMETRY` type, including columns with custom
+names such as `shape` or `位置`. If a table has multiple geometry columns, it
+prefers `geometry`, `geom`, then `the_geom` (case insensitive), followed by the
+first geometry column in table order. A text column named `geometry` is ignored.
+Geometry is rendered using `ST_AsGeoJSON()`; map coordinates must be
+longitude/latitude in WGS84. Reproject other coordinate systems in SQL first.
+
+The sidebar displays and searches `database.schema` for each table. Queries,
+map requests, and saved report labels use the selected database, so identically
+named tables in attached databases remain distinct.
 
 ```sql
 -- Example: Load spatial data and visualize
@@ -85,6 +96,18 @@ The web server exposes these endpoints:
 | `/api/query` | POST | Execute a SQL query (body = SQL string) |
 | `/api/tables` | GET | List available tables |
 | `/api/geojson/{table}` | GET | Get GeoJSON FeatureCollection for a table |
+
+`/api/tables` returns `table_name`, `table_schema`, and `table_catalog` for each
+table. `/api/geojson/{table}` accepts optional `schema` (default `main`) and
+`catalog` (default the connection's current database) query parameters. URL-encode
+the table path segment and parameter values when names contain special characters.
+
+SQL results and GeoJSON properties preserve Boolean and NULL values. Integer
+tokens outside JavaScript's safe range (`-9007199254740991` through
+`9007199254740991`) are returned as JSON strings to prevent rounding, for example
+`"9007199254740993"`. Other finite numeric values use JSON numbers; non-finite
+values use JSON null. Floating-point and decimal values still follow the browser's
+normal numeric precision.
 
 ## Requirements
 

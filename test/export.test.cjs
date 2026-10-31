@@ -13,6 +13,7 @@ const rows = Array.from({ length: 305 }, (_, i) => ({
   '名前 <&"': i === 0 ? '<img src=x onerror="window.injected=true">日本語' : `Row ${i}`,
   amount: i === 1 ? null : i,
   enabled: i % 2 === 0,
+  id: '9007199254740993',
 }));
 const features = { type: 'FeatureCollection', features: [
   { type: 'Feature', geometry: { type: 'Point', coordinates: [139.7, 35.7] }, properties: {} },
@@ -68,6 +69,7 @@ const server = http.createServer((request, response) => {
     assert.equal(await offline.locator('tbody tr').count(), 305);
     assert.equal(await offline.locator('tbody tr').last().locator('td').first().textContent(), 'Row 304');
     assert((await offline.locator('tbody tr').first().textContent()).includes('日本語'));
+    assert.equal(await offline.locator('tbody tr').first().locator('td').nth(3).textContent(), '9007199254740993');
     assert((await offline.locator('tbody tr').first().textContent()).includes('<img src=x'));
     assert.equal(await offline.locator('svg circle').count(), 1);
     assert.equal(await offline.locator('svg path[fill-rule="evenodd"]').count(), 1);

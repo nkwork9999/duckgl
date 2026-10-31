@@ -105,6 +105,8 @@ private:
 
 					if (val.IsNull()) {
 						geojson += "null";
+					} else if (types[col].id() == LogicalTypeId::BOOLEAN) {
+						geojson += val.GetValue<bool>() ? "true" : "false";
 					} else if (types[col].IsNumeric()) {
 						geojson += web_encoding::JsonNumber(val.ToString());
 					} else {
@@ -155,9 +157,10 @@ public:
 		server->Get("/api/tables", [this](const httplib::Request &, httplib::Response &res) {
 			try {
 				Connection conn(*db_instance);
-				auto result = conn.Query("SELECT table_name, table_schema "
+				auto result = conn.Query("SELECT table_name, table_schema, table_catalog "
 				                         "FROM information_schema.tables "
-				                         "WHERE table_schema NOT IN ('information_schema', 'pg_catalog')");
+				                         "WHERE table_schema NOT IN ('information_schema', 'pg_catalog') "
+				                         "ORDER BY table_catalog, table_schema, table_name");
 				res.set_content(ResultToJSON(std::move(result)), "application/json");
 			} catch (std::exception &e) {
 				res.status = 500;
@@ -169,6 +172,7 @@ public:
 			try {
 				string table_name = req.matches[1];
 				string schema = req.has_param("schema") ? req.get_param_value("schema") : "main";
+				string catalog = req.has_param("catalog") ? req.get_param_value("catalog") : "";
 				Connection conn(*db_instance);
 
 				auto load_result = conn.Query("LOAD spatial;");
@@ -181,13 +185,15 @@ public:
 					return;
 				}
 
-				string check_sql = "SELECT column_name FROM information_schema.columns "
-				                   "WHERE table_name = " +
-				                   web_encoding::SqlLiteral(table_name) +
-				                   " AND table_schema = " + web_encoding::SqlLiteral(schema) +
-				                   " "
-				                   "AND (column_name = 'geometry' OR column_name = "
-				                   "'geom' OR column_name = 'the_geom')";
+				string check_sql =
+				    "SELECT column_name FROM information_schema.columns "
+				    "WHERE table_name = " +
+				    web_encoding::SqlLiteral(table_name) + " AND table_schema = " + web_encoding::SqlLiteral(schema) +
+				    " AND table_catalog = " +
+				    (req.has_param("catalog") ? web_encoding::SqlLiteral(catalog) : "current_database()") +
+				    " AND (data_type = 'GEOMETRY' OR data_type LIKE 'GEOMETRY(%') "
+				    "ORDER BY CASE lower(column_name) WHEN 'geometry' THEN 0 WHEN 'geom' THEN 1 "
+				    "WHEN 'the_geom' THEN 2 ELSE 3 END, ordinal_position LIMIT 1";
 				auto check_result = conn.Query(check_sql);
 
 				if (!check_result || check_result->HasError()) {
@@ -209,6 +215,7 @@ public:
 
 				string sql = "SELECT ST_AsGeoJSON(" + web_encoding::SqlIdentifier(geom_col) +
 				             ") as geojson, * EXCLUDE(" + web_encoding::SqlIdentifier(geom_col) + ") FROM " +
+				             (req.has_param("catalog") ? web_encoding::SqlIdentifier(catalog) + "." : "") +
 				             web_encoding::SqlIdentifier(schema) + "." + web_encoding::SqlIdentifier(table_name);
 				auto result = conn.Query(sql);
 

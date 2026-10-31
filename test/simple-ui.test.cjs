@@ -19,6 +19,7 @@ vm.runInContext(isolated('quoteIdentifier') + isolated('qualifiedTable'), contex
 assert.equal(context.quoteIdentifier('odd"name'), '"odd""name"');
 assert.equal(context.qualifiedTable({table_schema:'other',table_name:'odd"name'}), '"other"."odd""name"');
 assert.equal(context.qualifiedTable({table_name:'日本語'}), '"main"."日本語"');
+assert.equal(context.qualifiedTable({table_catalog:'archive".2026',table_schema:'analytics',table_name:'orders'}), '"archive"".2026"."analytics"."orders"');
 if (script.includes('function csvCell')) {
   vm.runInContext(isolated('csvCell'), context);
   assert.equal(context.csvCell('a,"b"'), '"a,""b"""');

@@ -7,7 +7,8 @@ static constexpr char DUCKGL_SIMPLE_HTML[] =
 const $ = id => document.getElementById(id);
 let tables = [], selectedTable = null, lastRows = [], lastQuery = '', lastMapLabel = '', queryGeneration = 0;
 function quoteIdentifier(value) { return '"' + String(value).replace(/"/g, '""') + '"'; }
-function qualifiedTable(table) { return quoteIdentifier(table.table_schema || 'main') + '.' + quoteIdentifier(table.table_name); }
+function tableNamespace(table) { return (table.table_catalog ? table.table_catalog + '.' : '') + (table.table_schema || 'main'); }
+function qualifiedTable(table) { return (table.table_catalog ? quoteIdentifier(table.table_catalog) + '.' : '') + quoteIdentifier(table.table_schema || 'main') + '.' + quoteIdentifier(table.table_name); }
 function setStatus(message, error = false) { $('status').textContent = message; $('status').dataset.error = String(error); }
 async function api(url, options) {
     const response = await fetch(url, options);
@@ -34,13 +35,13 @@ function renderTable(target, rows, limit = 200) {
 function renderTables() {
     const list = $('tables'); list.replaceChildren();
     const filter = $('table-search').value.trim().toLocaleLowerCase();
-    const matches = tables.filter(table => (table.table_schema + '.' + table.table_name).toLocaleLowerCase().includes(filter));
+    const matches = tables.filter(table => (tableNamespace(table) + '.' + table.table_name).toLocaleLowerCase().includes(filter));
     if (!matches.length) { list.textContent = tables.length ? 'No matching tables.' : 'No tables found.'; return; }
     for (const table of matches) {
         const button = document.createElement('button'); button.type = 'button'; button.className = 'table-button';
         button.setAttribute('aria-current', String(selectedTable === table));
         const name = document.createElement('span'); name.textContent = table.table_name;
-        const schema = document.createElement('span'); schema.className = 'table-schema'; schema.textContent = table.table_schema || 'main';
+        const schema = document.createElement('span'); schema.className = 'table-schema'; schema.textContent = tableNamespace(table);
         button.append(name, schema); button.addEventListener('click', () => selectTable(table)); list.appendChild(button);
     }
 }
@@ -87,7 +88,7 @@ function renderFeatures(collection) {
 }
 async function loadMapTable() {
     if (!selectedTable) return; const table = selectedTable, generation = ++geoGeneration; $('show-map').disabled = true; setStatus('Loading ' + table.table_name + '…');
-    try { const collection = await api('/api/geojson/' + encodeURIComponent(table.table_name) + '?schema=' + encodeURIComponent(table.table_schema || 'main')); if (generation !== geoGeneration) return; if (!Array.isArray(collection.features)) throw new Error('Invalid GeoJSON response.'); lastMapLabel = (table.table_schema || 'main') + '.' + table.table_name; renderFeatures(collection); $('map-caption').textContent = table.table_name + ' · ' + collection.features.length.toLocaleString() + ' features'; setStatus(collection.features.length ? 'Map updated.' : 'No geometry found in this table.'); }
+    try { const collection = await api('/api/geojson/' + encodeURIComponent(table.table_name) + '?schema=' + encodeURIComponent(table.table_schema || 'main') + (table.table_catalog ? '&catalog=' + encodeURIComponent(table.table_catalog) : '')); if (generation !== geoGeneration) return; if (!Array.isArray(collection.features)) throw new Error('Invalid GeoJSON response.'); lastMapLabel = tableNamespace(table) + '.' + table.table_name; renderFeatures(collection); $('map-caption').textContent = lastMapLabel + ' · ' + collection.features.length.toLocaleString() + ' features'; setStatus(collection.features.length ? 'Map updated.' : 'No geometry found in this table.'); }
     catch (error) { if (generation === geoGeneration) setStatus(error.message + ' Use Preview rows to inspect the table.', true); }
     finally { if (generation === geoGeneration) $('show-map').disabled = false; }
 }

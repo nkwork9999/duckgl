@@ -8,7 +8,8 @@ const source = fs.readFileSync(path.join(__dirname, '../src/include/simple_ui.hp
 const html = source.match(/R"DUCKUI\(([\s\S]*)\)DUCKUI"/)[1];
 const exportJS = fs.readFileSync(path.join(__dirname, '../src/include/export_ui.hpp'), 'utf8').match(/R\"DUCKEXPORT\(([\s\S]*)\)DUCKEXPORT\"/)[1];
 const isMap = html.includes('<title>DuckGL</title>');
-let queryCount = 0, tablesFail = false, geoURL = '';
+let queryCount = 0, tablesFail = false, geoURL = '', attachedTables = false;
+const attachedCatalog = 'archive".2026';
 const rows = [{name:'<img src=x onerror="window.injected=true">', amount:0}, {name:'quoted,"value"',amount:null}, {name:'Tokyo',amount:12.5}];
 const server = http.createServer(async (request, response) => {
     const url = new URL(request.url, 'http://localhost');
@@ -17,7 +18,9 @@ const server = http.createServer(async (request, response) => {
     response.setHeader('Content-Type','application/json');
     if (url.pathname === '/api/tables') {
         response.statusCode = tablesFail ? 500 : 200;
-        response.end(JSON.stringify(tablesFail ? {error:'Table connection failed'} : [{table_name:'orders',table_schema:'analytics'},{table_name:'odd"name<img>',table_schema:'main'}])); return;
+        const tables = [{table_name:'orders',table_schema:'analytics'},{table_name:'odd"name<img>',table_schema:'main'}];
+        if (attachedTables) tables.push({table_name:'orders',table_schema:'analytics',table_catalog:attachedCatalog});
+        response.end(JSON.stringify(tablesFail ? {error:'Table connection failed'} : tables)); return;
     }
     if (url.pathname.startsWith('/api/geojson/')) {
         geoURL = request.url;
@@ -93,10 +96,27 @@ window.deck={MapboxOverlay:class{setProps(props){window.mapLayers=props.layers}}
         await page.getByText('Could not load tables. Use Refresh to retry.',{exact:true}).waitFor();
         tablesFail=false; await page.getByRole('button',{name:'Refresh tables'}).click(); await page.getByRole('button',{name:'orders analytics'}).waitFor();
         assert.equal(await page.locator('#status').textContent(),'Tables updated.');
+        attachedTables=true;
+        await page.getByRole('button',{name:'Refresh tables'}).click();
+        await page.locator('.table-button').nth(2).waitFor();
+        await page.locator('.table-button').nth(2).click();
+        assert.equal(await page.locator('#sql-editor').inputValue(), 'SELECT * FROM "archive"".2026"."analytics"."orders" LIMIT 200');
+        await page.waitForFunction(() => document.getElementById('show-map').disabled === false);
+        assert.equal(new URL(geoURL, 'http://localhost').searchParams.get('catalog'), attachedCatalog);
+        assert((await page.locator('.table-button').nth(2).textContent()).includes(attachedCatalog + '.analytics'));
+        const downloadPromise=page.waitForEvent('download');
+        await page.getByRole('button',{name:'Export HTML',exact:true}).click();
+        const report=fs.readFileSync(await (await downloadPromise).path(),'utf8');
+        const reportPage=await browser.newPage();
+        await reportPage.setContent(report);
+        assert((await reportPage.locator('body').textContent()).includes(attachedCatalog + '.analytics.orders'));
+        await reportPage.close();
+        await page.locator('#table-search').fill('archive');
+        assert.equal(await page.locator('.table-button').count(),1);
         await page.setViewportSize({width:375,height:812});
         assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
         await page.screenshot({path:path.join(outputDir,(isMap?'duckgl':'duckdbi')+'-mobile.png'),fullPage:true});
         assert.deepEqual(errors,[]);
-        console.log('Browser regressions passed: rendering, identifiers, filtering, shortcuts, errors, retry, duplicate requests, charts/CSV, mobile layout.');
+        console.log('Browser regressions passed: rendering, identifiers, catalog selection, report labels, filtering, shortcuts, errors, retry, duplicate requests, mobile layout.');
     } finally { if(browser) await browser.close(); await new Promise(resolve=>server.close(resolve)); }
 })().catch(error=>{console.error(error);process.exitCode=1});
