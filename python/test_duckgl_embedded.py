@@ -11,7 +11,10 @@ from duckgl_embedded import PublishedLayer
 class PublishedLayerTests(unittest.TestCase):
     def setUp(self):
         artifact = os.getenv("DUCKGL_TEST_EXTENSION")
-        self.db = duckdb.connect(config={"allow_unsigned_extensions": bool(artifact)})
+        config = {"allow_unsigned_extensions": bool(artifact)}
+        if directory := os.getenv("DUCKDB_EXTENSION_DIRECTORY"):
+            config["extension_directory"] = directory
+        self.db = duckdb.connect(config=config)
         self.addCleanup(self.db.close)
         self.db.load_extension(artifact or "duckgl")
         self.db.load_extension("spatial")
@@ -38,3 +41,10 @@ class PublishedLayerTests(unittest.TestCase):
                     self.fail("second publisher should not take over")
             with urlopen(url, timeout=3) as response:
                 self.assertEqual(response.status, 200)
+
+    def test_disabled_external_access_prevents_publication(self):
+        self.db.execute("SET enable_external_access=false")
+        with self.assertRaises(duckdb.PermissionException):
+            with PublishedLayer(self.db, "owner's layer"):
+                self.fail("publication opened a listener")
+        self.assertFalse(self.db.execute("SELECT duckgl_stop_layer()").fetchone()[0])

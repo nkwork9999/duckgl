@@ -180,6 +180,8 @@ parameters. The host owns tenant authentication, view selection and the response
 sent to remote users. Size the view for memory and keep the listener inside the
 tenant's private worker. Reopen the layer to refresh the snapshot.
 
+For host-side point queries, register a WGS84 relation with unique `feature_id`, `longitude`, `latitude`, and `label`. `PointLayer(connection, relation).fetch(Viewport(west, south, east, north))` projects those columns within the viewport. A west bound larger than the east bound crosses the antimeridian. `fetch_at_zoom(viewport, zoom)` aggregates into world-aligned degree grid cells for zooms 0–13 and returns points for zooms 14–30.
+
 To run the Python integration tests against a trusted local build, install
 matching Python DuckDB and spatial, then run:
 

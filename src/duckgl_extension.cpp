@@ -9,6 +9,7 @@
 #include "duckdb/main/client_context_state.hpp"
 #include "duckdb/main/database.hpp"
 #include "duckdb/main/prepared_statement.hpp"
+#include "duckdb/main/settings.hpp"
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/parser/sql_statement.hpp"
 #include "web_encoding.hpp"
@@ -348,13 +349,14 @@ public:
 		}
 		auto snapshot = ResultToGeoJSONWithProperties(std::move(rows));
 		server = make_uniq<httplib::Server>();
-		server->Get("/api/layer", [snapshot = std::move(snapshot)](const httplib::Request &req, httplib::Response &res) {
-			if (!req.params.empty() || !req.body.empty()) {
-				res.status = 400;
-				return;
-			}
-			res.set_content(snapshot, "application/geo+json");
-		});
+		server->Get("/api/layer",
+		            [snapshot = std::move(snapshot)](const httplib::Request &req, httplib::Response &res) {
+			            if (!req.params.empty() || !req.body.empty()) {
+				            res.status = 400;
+				            return;
+			            }
+			            res.set_content(snapshot, "application/geo+json");
+		            });
 		Listen("127.0.0.1");
 		return port;
 	}
@@ -398,50 +400,54 @@ struct EmbeddedLayerState : ClientContextState {
 };
 
 static ScalarFunction LayerStartFunction() {
-	auto function = ScalarFunction("duckgl_start_layer", {LogicalType::INTEGER, LogicalType::VARCHAR},
-	                               LogicalType::INTEGER, [](DataChunk &args, ExpressionState &state, Vector &result) {
-		auto &context = state.GetContext();
-		auto layer = context.registered_state->GetOrCreate<EmbeddedLayerState>("duckgl.embedded_layer");
-		std::lock_guard<std::mutex> guard(layer->lock);
-		for (idx_t i = 0; i < args.size(); i++) {
-			auto port = args.data[0].GetValue(i);
-			auto view = args.data[1].GetValue(i);
-			if (port.IsNull() || view.IsNull()) {
-				result.SetValue(i, Value(LogicalType::INTEGER));
-				continue;
-			}
-			const int number = port.GetValue<int32_t>();
-			const auto name = view.GetValue<string>();
-			if (number < 0 || number > 65535 || name.empty() || name.find('\0') != string::npos) {
-				throw InvalidInputException("Expected a port in [0, 65535] and a nonempty layer name without NUL");
-			}
-			if (layer->server) {
-				throw InvalidInputException("Stop the current embedded layer before starting another");
-			}
-			auto server = make_uniq<DuckGLServer>(&DatabaseInstance::GetDatabase(context), number);
-			result.SetValue(i, Value::INTEGER(server->StartLayer(name)));
-			layer->server = std::move(server);
-		}
-	});
+	auto function = ScalarFunction(
+	    "duckgl_start_layer", {LogicalType::INTEGER, LogicalType::VARCHAR}, LogicalType::INTEGER,
+	    [](DataChunk &args, ExpressionState &state, Vector &result) {
+		    auto &context = state.GetContext();
+		    if (!Settings::Get<EnableExternalAccessSetting>(context)) {
+			    throw PermissionException("Publishing a DuckGL layer requires external access");
+		    }
+		    auto layer = context.registered_state->GetOrCreate<EmbeddedLayerState>("duckgl.embedded_layer");
+		    std::lock_guard<std::mutex> guard(layer->lock);
+		    for (idx_t i = 0; i < args.size(); i++) {
+			    auto port = args.data[0].GetValue(i);
+			    auto view = args.data[1].GetValue(i);
+			    if (port.IsNull() || view.IsNull()) {
+				    result.SetValue(i, Value(LogicalType::INTEGER));
+				    continue;
+			    }
+			    const int number = port.GetValue<int32_t>();
+			    const auto name = view.GetValue<string>();
+			    if (number < 0 || number > 65535 || name.empty() || name.find('\0') != string::npos) {
+				    throw InvalidInputException("Expected a port in [0, 65535] and a nonempty layer name without NUL");
+			    }
+			    if (layer->server) {
+				    throw InvalidInputException("Stop the current embedded layer before starting another");
+			    }
+			    auto server = make_uniq<DuckGLServer>(&DatabaseInstance::GetDatabase(context), number);
+			    result.SetValue(i, Value::INTEGER(server->StartLayer(name)));
+			    layer->server = std::move(server);
+		    }
+	    });
 	function.SetFallible();
 	function.SetVolatile();
 	return function;
 }
 
 static ScalarFunction LayerStopFunction() {
-	auto function = ScalarFunction("duckgl_stop_layer", {}, LogicalType::BOOLEAN,
-	                               [](DataChunk &args, ExpressionState &state, Vector &result) {
-		auto layer = state.GetContext().registered_state->Get<EmbeddedLayerState>("duckgl.embedded_layer");
-		for (idx_t i = 0; i < args.size(); i++) {
-			bool stopped = false;
-			if (layer) {
-				std::lock_guard<std::mutex> guard(layer->lock);
-				stopped = static_cast<bool>(layer->server);
-				layer->server.reset();
-			}
-			result.SetValue(i, Value::BOOLEAN(stopped));
-		}
-	});
+	auto function = ScalarFunction(
+	    "duckgl_stop_layer", {}, LogicalType::BOOLEAN, [](DataChunk &args, ExpressionState &state, Vector &result) {
+		    auto layer = state.GetContext().registered_state->Get<EmbeddedLayerState>("duckgl.embedded_layer");
+		    for (idx_t i = 0; i < args.size(); i++) {
+			    bool stopped = false;
+			    if (layer) {
+				    std::lock_guard<std::mutex> guard(layer->lock);
+				    stopped = static_cast<bool>(layer->server);
+				    layer->server.reset();
+			    }
+			    result.SetValue(i, Value::BOOLEAN(stopped));
+		    }
+	    });
 	function.SetVolatile();
 	return function;
 }
