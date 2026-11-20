@@ -161,6 +161,32 @@ Ports must be between 1 and 65535. Use a loopback host such as `127.0.0.1` for a
 local workspace. The server shares the running DuckDB database. It accepts SQL
 from the workspace/API, so bind it only to an interface you intend to expose.
 
+## Embedded GeoJSON layer
+
+For a host application, load this version of DuckGL and spatial on a dedicated
+DuckDB connection. Create and commit a view in the primary database's main
+schema with a WGS84 column named `geometry` and only the public properties.
+Select that view in trusted host code. The Python interface in `python/duckgl_embedded.py`
+publishes an in-memory snapshot for the lifetime of the context:
+
+```python
+with PublishedLayer(connection, "public_stations") as url:
+    serve_authorized_map_request(url)
+```
+
+The embedded listener binds to loopback on an ephemeral port. Its single route
+is `GET /api/layer`. It serves the snapshot directly and rejects request
+parameters. The host owns tenant authentication, view selection and the response
+sent to remote users. Size the view for memory and keep the listener inside the
+tenant's private worker. Reopen the layer to refresh the snapshot.
+
+To run the Python integration tests against a trusted local build, install
+matching Python DuckDB and spatial, then run:
+
+```sh
+DUCKGL_TEST_EXTENSION="$PWD/build/release/extension/duckgl/duckgl.duckdb_extension" python3 -m unittest discover -s python -v
+```
+
 ## HTTP API
 
 All data endpoints return JSON. SQL errors contain an `error` field; map errors

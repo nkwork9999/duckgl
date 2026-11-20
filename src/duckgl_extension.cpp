@@ -6,6 +6,7 @@
 #include "duckdb/common/exception.hpp"
 #include "duckdb/function/scalar_function.hpp"
 #include "duckdb/main/connection.hpp"
+#include "duckdb/main/client_context_state.hpp"
 #include "duckdb/main/database.hpp"
 #include "duckdb/main/prepared_statement.hpp"
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
@@ -16,6 +17,7 @@
 
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <thread>
 
 #include "httplib_wrapper.hpp"
@@ -325,16 +327,7 @@ public:
 			}
 		});
 
-		if (!server->bind_to_port(host, port)) {
-			throw IOException("Unable to bind HTTP server to %s:%d", host, port);
-		}
-		running = true;
-
-		server_thread = std::thread([this, host]() {
-			server->listen_after_bind();
-			running = false;
-		});
-		server->wait_until_ready();
+		Listen(host);
 
 #ifdef __APPLE__
 		system(("open http://localhost:" + std::to_string(port)).c_str());
@@ -343,6 +336,27 @@ public:
 #elif _WIN32
 		system(("start http://localhost:" + std::to_string(port)).c_str());
 #endif
+	}
+
+	// Only the trusted host chooses the published view. HTTP serves its immutable snapshot.
+	int StartLayer(const string &view) {
+		Connection conn(*db_instance);
+		const string source = "main." + web_encoding::SqlIdentifier(view);
+		auto rows = conn.Query("SELECT ST_AsGeoJSON(geometry), * EXCLUDE (geometry) FROM " + source);
+		if (rows->HasError()) {
+			throw InvalidInputException(rows->GetError());
+		}
+		auto snapshot = ResultToGeoJSONWithProperties(std::move(rows));
+		server = make_uniq<httplib::Server>();
+		server->Get("/api/layer", [snapshot = std::move(snapshot)](const httplib::Request &req, httplib::Response &res) {
+			if (!req.params.empty() || !req.body.empty()) {
+				res.status = 400;
+				return;
+			}
+			res.set_content(snapshot, "application/geo+json");
+		});
+		Listen("127.0.0.1");
+		return port;
 	}
 
 	void Stop() {
@@ -358,7 +372,79 @@ public:
 	bool IsRunning() const {
 		return running;
 	}
+
+private:
+	void Listen(const string &host) {
+		if (port == 0) {
+			port = server->bind_to_any_port(host);
+		} else if (!server->bind_to_port(host, port)) {
+			throw IOException("Unable to bind HTTP server to %s:%d", host, port);
+		}
+		if (port <= 0) {
+			throw IOException("Unable to reserve HTTP port");
+		}
+		running = true;
+		server_thread = std::thread([this]() {
+			server->listen_after_bind();
+			running = false;
+		});
+		server->wait_until_ready();
+	}
 };
+
+struct EmbeddedLayerState : ClientContextState {
+	std::mutex lock;
+	unique_ptr<DuckGLServer> server;
+};
+
+static ScalarFunction LayerStartFunction() {
+	auto function = ScalarFunction("duckgl_start_layer", {LogicalType::INTEGER, LogicalType::VARCHAR},
+	                               LogicalType::INTEGER, [](DataChunk &args, ExpressionState &state, Vector &result) {
+		auto &context = state.GetContext();
+		auto layer = context.registered_state->GetOrCreate<EmbeddedLayerState>("duckgl.embedded_layer");
+		std::lock_guard<std::mutex> guard(layer->lock);
+		for (idx_t i = 0; i < args.size(); i++) {
+			auto port = args.data[0].GetValue(i);
+			auto view = args.data[1].GetValue(i);
+			if (port.IsNull() || view.IsNull()) {
+				result.SetValue(i, Value(LogicalType::INTEGER));
+				continue;
+			}
+			const int number = port.GetValue<int32_t>();
+			const auto name = view.GetValue<string>();
+			if (number < 0 || number > 65535 || name.empty() || name.find('\0') != string::npos) {
+				throw InvalidInputException("Expected a port in [0, 65535] and a nonempty layer name without NUL");
+			}
+			if (layer->server) {
+				throw InvalidInputException("Stop the current embedded layer before starting another");
+			}
+			auto server = make_uniq<DuckGLServer>(&DatabaseInstance::GetDatabase(context), number);
+			result.SetValue(i, Value::INTEGER(server->StartLayer(name)));
+			layer->server = std::move(server);
+		}
+	});
+	function.SetFallible();
+	function.SetVolatile();
+	return function;
+}
+
+static ScalarFunction LayerStopFunction() {
+	auto function = ScalarFunction("duckgl_stop_layer", {}, LogicalType::BOOLEAN,
+	                               [](DataChunk &args, ExpressionState &state, Vector &result) {
+		auto layer = state.GetContext().registered_state->Get<EmbeddedLayerState>("duckgl.embedded_layer");
+		for (idx_t i = 0; i < args.size(); i++) {
+			bool stopped = false;
+			if (layer) {
+				std::lock_guard<std::mutex> guard(layer->lock);
+				stopped = static_cast<bool>(layer->server);
+				layer->server.reset();
+			}
+			result.SetValue(i, Value::BOOLEAN(stopped));
+		}
+	});
+	function.SetVolatile();
+	return function;
+}
 
 static unique_ptr<DuckGLServer> global_server;
 
@@ -422,6 +508,8 @@ static ScalarFunction StopFunction() {
 void DuckglExtension::Load(ExtensionLoader &loader) {
 	loader.RegisterFunction(StartFunction());
 	loader.RegisterFunction(StopFunction());
+	loader.RegisterFunction(LayerStartFunction());
+	loader.RegisterFunction(LayerStopFunction());
 }
 
 std::string DuckglExtension::Name() {
@@ -456,6 +544,11 @@ DUCKDB_EXTENSION_API void duckgl_init(duckdb::DatabaseInstance &db) {
 
 	duckdb::CreateScalarFunctionInfo duckgl_stop_func(duckdb::StopFunction());
 	catalog.CreateFunction(*con.context, duckgl_stop_func);
+
+	duckdb::CreateScalarFunctionInfo layer_start(duckdb::LayerStartFunction());
+	catalog.CreateFunction(*con.context, layer_start);
+	duckdb::CreateScalarFunctionInfo layer_stop(duckdb::LayerStopFunction());
+	catalog.CreateFunction(*con.context, layer_stop);
 
 	con.Commit();
 }
