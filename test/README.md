@@ -1,5 +1,12 @@
 # Regression tests
 
+The embedded-mode suite in `python/test_duckgl_embedded.py` loads the compiled
+extension in Python DuckDB and exercises a real loopback HTTP listener. See
+the README's embedded layer section for the command. The companion native
+test `test/embedded_layer_test.cpp` uses the same compile/link settings as
+`test/native_http_test.cpp` and requires the matching spatial extension
+to be installed. It also checks the route allowlist and connection ownership.
+
 Run `bash scripts/test-unit.sh` for C++ encoding/server helper tests and frontend
 syntax and logic checks. Run `npm ci --prefix test`, then
 `npx --prefix test playwright install chromium` and `node test/browser.test.cjs`
