@@ -526,7 +526,7 @@ std::string DuckglExtension::Version() const {
 #ifdef EXT_VERSION_DUCKGL
 	return EXT_VERSION_DUCKGL;
 #else
-	return "0.1.0";
+	return "0.2.0";
 #endif
 }
 
