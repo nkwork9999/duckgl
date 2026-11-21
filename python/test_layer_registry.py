@@ -35,3 +35,33 @@ class LayerRegistryTests(unittest.TestCase):
             """)
             with self.assertRaises(LookupError):
                 registry.fetch("principal", name, bounds)
+
+    def test_deferred_details_scope_version_omissions_and_revocation(self):
+        with duckdb.connect() as db:
+            db.execute("""
+                CREATE TABLE points(feature_id BIGINT PRIMARY KEY, longitude DOUBLE, latitude DOUBLE,
+                                    label VARCHAR, description VARCHAR, confidential VARCHAR);
+                INSERT INTO points VALUES (1, 0, 0, 'Marker', 'Public detail', 'Private detail'),
+                                          (2, 0, 0, 'Marker', NULL, 'Other private detail')
+            """)
+            catalog, = db.execute("SELECT current_database()").fetchone()
+            name = LayerId("markers")
+            grants = {"allowed"}
+            registry = LayerRegistry(db, {
+                name: RegisteredLayer(catalog, "points", "new", details={"description": "description"})
+            }, lambda principal, layer, version: principal in grants)
+            version, markers = registry.fetch("allowed", name, Viewport(-1, -1, 1, 1))
+            self.assertEqual(version, "new")
+            self.assertNotIn("Public detail", str(markers))
+            details = registry.details("allowed", name, version=version, feature_ids=[2, 3, 1, 2])
+            self.assertEqual([(d.feature_id, d.found, d.attributes) for d in details], [
+                (2, True, {"description": None}), (3, False, {}),
+                (1, True, {"description": "Public detail"}),
+            ])
+            with self.assertRaises(LookupError):
+                registry.details("allowed", name, version="old", feature_ids=[1])
+            with self.assertRaises((TypeError, ValueError)):
+                registry.details("allowed", name, version=version, feature_ids=["1"])
+            grants.clear()
+            with self.assertRaises(PermissionError):
+                registry.details("allowed", name, version=version, feature_ids=[1])

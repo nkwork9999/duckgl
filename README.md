@@ -204,7 +204,11 @@ For host-side point queries, register a WGS84 relation with unique `feature_id`,
 Use `GeometryLayer(connection, relation, source_crs=..., attributes=...)` for exact viewport selection
 from registered `feature_id` and `geometry` columns. The source CRS must be known. For a WGS84 shape
 that crosses the antimeridian, split the geometry on that line at ingest while keeping one feature ID.
-Only explicitly registered attributes are returned. `TileOccupancy.build(layer, version)` uses an
+Only explicitly registered attributes are returned. For point layers, register separate detail properties
+through `RegisteredLayer(details=...)` and request up to 256 IDs with
+`LayerRegistry.details(principal, layer_id, version=..., feature_ids=...)`. Use a registered relation
+whose rows are all visible to the principals authorized for that layer.
+`TileOccupancy.build(layer, version)` uses an
 immutable Web Mercator point snapshot to skip empty vector tiles for that version, including the tile
 buffer. Pass a new version whenever the source changes.
 

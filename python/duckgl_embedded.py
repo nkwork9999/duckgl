@@ -386,6 +386,14 @@ class RegisteredLayer:
     version: str
     attributes: Mapping[str, AttributeColumn] | None = None
     time_column: str | None = None
+    details: Mapping[str, str] | None = None
+
+
+@dataclass(frozen=True)
+class FeatureDetails:
+    feature_id: int
+    found: bool
+    attributes: dict
 
 
 class LayerRegistry:
@@ -396,6 +404,7 @@ class LayerRegistry:
         self._db = connection
         self._authorize = authorize
         self._layers = {}
+        self._details = {}
         for name, record in layers.items():
             if type(name) is not LayerId or type(record) is not RegisteredLayer:
                 raise TypeError("expected LayerId keys and RegisteredLayer values")
@@ -404,6 +413,21 @@ class LayerRegistry:
             layer = PointLayer(connection, record.relation, catalog=record.catalog,
                                attributes=record.attributes, time_column=record.time_column)
             self._layers[name] = (record.catalog, self._oid(record.catalog), record.version, layer)
+            names = tuple(record.details or ())
+            fields = []
+            for index, (alias, column) in enumerate((record.details or {}).items()):
+                _identifier(alias)
+                fields.append(f", source.{_identifier(column)} AS attr_{index}")
+            relation = f"{_identifier(record.catalog)}.main.{_identifier(record.relation)}"
+            self._details[name] = (names, f'''
+                WITH ids AS (
+                    SELECT id, min(ord) AS position
+                    FROM unnest(?::BIGINT[]) WITH ORDINALITY AS t(id, ord) GROUP BY id
+                )
+                SELECT ids.id, source.feature_id IS NOT NULL AS found {"".join(fields)}
+                FROM ids LEFT JOIN {relation} AS source ON source.feature_id = ids.id
+                ORDER BY ids.position
+            ''')
 
     def _oid(self, catalog):
         row = self._db.execute("SELECT database_oid FROM duckdb_databases() WHERE database_name = ?",
@@ -412,25 +436,47 @@ class LayerRegistry:
             raise LookupError("registered catalog is unavailable")
         return row[0]
 
+    def _resolve(self, principal, layer_id):
+        if type(layer_id) is not LayerId:
+            raise TypeError("expected a LayerId")
+        layer = self._layers.get(layer_id)
+        if layer is None:
+            raise PermissionError("layer is unavailable to this principal")
+        self._validate_access(principal, layer_id, layer)
+        return layer
+
+    def _validate_access(self, principal, layer_id, layer):
+        catalog, oid, version, _ = layer
+        if not self._authorize(principal, layer_id, version):
+            raise PermissionError("layer is unavailable to this principal")
+        if self._oid(catalog) != oid:
+            raise LookupError("registered catalog has changed")
+
     def fetch(self, principal: object, layer_id: LayerId, viewport: Viewport, *,
               zoom: int | None = None, where: FilterSpec | None = None,
               time: TimeRange | None = None) -> tuple[str, list[MapPoint] | list[GridCell]]:
         """Fetch one authorized layer version, rejecting a replaced catalog."""
-        if type(layer_id) is not LayerId:
-            raise TypeError("expected a LayerId")
-        layer_info = self._layers.get(layer_id)
-        if layer_info is None or not self._authorize(principal, layer_id, layer_info[2]):
-            raise PermissionError("layer is unavailable to this principal")
-        catalog, oid, version, layer = layer_info
-        if self._oid(catalog) != oid:
-            raise LookupError("registered catalog has changed")
+        registered = self._resolve(principal, layer_id)
+        _, _, version, layer = registered
         result = (layer.fetch(viewport, where=where, time=time) if zoom is None
                   else layer.fetch_at_zoom(viewport, zoom, where=where, time=time))
-        if self._oid(catalog) != oid:
-            raise LookupError("registered catalog has changed")
-        if not self._authorize(principal, layer_id, version):
-            raise PermissionError("layer is unavailable to this principal")
+        self._validate_access(principal, layer_id, registered)
         return version, result
+
+    def details(self, principal: object, layer_id: LayerId, *, version: str,
+                feature_ids: list[int]) -> list[FeatureDetails]:
+        """Fetch only the declared detail fields for an authorized immutable version."""
+        registered = self._resolve(principal, layer_id)
+        if type(version) is not str or version != registered[2]:
+            raise LookupError("requested layer version has changed")
+        if (type(feature_ids) is not list or len(feature_ids) > 256 or
+                any(type(key) is not int or not -(1 << 63) <= key < (1 << 63) for key in feature_ids)):
+            raise ValueError("provide a list of up to 256 signed 64-bit feature IDs")
+        names, query = self._details[layer_id]
+        rows = self._db.execute(query, [feature_ids]).fetchall()
+        self._validate_access(principal, layer_id, registered)
+        return [FeatureDetails(key, found, dict(zip(names, fields)) if found else {})
+                for key, found, *fields in rows]
 
 
 @dataclass(frozen=True)
