@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="DuckDB spatialの地物を地図に表示し、検索、分析、公開、エクスポートする拡張。">
+<title>Python 組み込み API · DuckGL</title><link rel="stylesheet" href="style.css">
+<script src="search.js" defer></script>
+</head>
+<body data-project="duckgl">
+<a class="skip" href="#main">本文へ移動</a>
+<header class="masthead"><a href="index.html" class="product">DuckGL</a>
+<a href="https://github.com/nkwork9999/duckgl">GitHub ↗</a></header>
+<div class="layout"><nav aria-label="ドキュメント"><a href="index.html">概要</a><a href="functions.html">SQL リファレンス</a><a href="python.html" aria-current="page">Python 組み込み API</a><a href="guide.html">利用ガイド</a></nav>
+<main id="main"><h1>Python 組み込み API</h1><p>アプリが用意した DuckDB 接続に、型付きの引数を渡して利用します。</p><p><a href="https://github.com/nkwork9999/duckgl/blob/100823952a6f06537a128d9fc8c06acb65a40d7a/python/duckgl_embedded.py">Python ソースを表示</a></p><label class="search">クラスとメソッドを検索<input id="filter" type="search" autocomplete="off"></label><p id="matches" role="status"></p><article class="entry searchable" id="PublishedLayer"><h2>PublishedLayer</h2><p>Publish a host-selected main-schema relation for the lifetime of a with block.</p><ul><li><code>__init__(self, connection: DuckDBPyConnection, view: str)</code></li></ul></article><article class="entry searchable" id="Viewport"><h2>Viewport</h2><ul><li><code>west: float</code></li><li><code>south: float</code></li><li><code>east: float</code></li><li><code>north: float</code></li></ul></article><article class="entry searchable" id="MapPoint"><h2>MapPoint</h2><ul><li><code>feature_id: int</code></li><li><code>longitude: float</code></li><li><code>latitude: float</code></li><li><code>label: str | None</code></li></ul></article><article class="entry searchable" id="GridCell"><h2>GridCell</h2><ul><li><code>x: int</code></li><li><code>y: int</code></li><li><code>count: int</code></li><li><code>longitude: float</code></li><li><code>latitude: float</code></li></ul></article><article class="entry searchable" id="PointLayer"><h2>PointLayer</h2><p>Read WGS84 points from a trusted host-selected main-schema relation.
+
+The host provisions a tenant-scoped connection and a primary/unique
+feature_id. Longitudes in the source use the [-180, 180] convention.</p><ul><li><code>__init__(self, connection: DuckDBPyConnection, relation: str)</code></li><li><code>fetch(self, viewport: Viewport) → list[MapPoint]</code></li><li><code>fetch_at_zoom(self, viewport: Viewport, zoom: int) → list[GridCell] | list[MapPoint]</code><p>Use a world-aligned degree grid below zoom 14 and points at higher zoom.</p></li></ul></article>
+<footer>対応ソース <a href="https://github.com/nkwork9999/duckgl/tree/100823952a6f06537a128d9fc8c06acb65a40d7a"><code>100823952a6f</code></a> · DuckDB 2.0.0</footer>
+</main></div></body></html>

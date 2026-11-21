@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="DuckDB spatialの地物を地図に表示し、検索、分析、公開、エクスポートする拡張。">
+<title>利用ガイド · DuckGL</title><link rel="stylesheet" href="style.css">
+<script src="search.js" defer></script>
+</head>
+<body data-project="duckgl">
+<a class="skip" href="#main">本文へ移動</a>
+<header class="masthead"><a href="index.html" class="product">DuckGL</a>
+<a href="https://github.com/nkwork9999/duckgl">GitHub ↗</a></header>
+<div class="layout"><nav aria-label="ドキュメント"><a href="index.html">概要</a><a href="functions.html">SQL リファレンス</a><a href="python.html">Python 組み込み API</a><a href="guide.html" aria-current="page">利用ガイド</a></nav>
+<main id="main"><details class="toc" open><summary>このページの目次</summary><ul><li class="h2"><a href="#quick-start">Quick start</a></li><li class="h2"><a href="#workspace">Workspace</a></li><li class="h3"><a href="#ten-new-capabilities">Ten new capabilities</a></li><li class="h3"><a href="#geometry-columns">Geometry columns</a></li><li class="h3"><a href="#coordinate-accuracy">Coordinate accuracy</a></li><li class="h3"><a href="#map-a-sql-query">Map a SQL query</a></li><li class="h2"><a href="#export-formats">Export formats</a></li><li class="h2"><a href="#sql-functions">SQL functions</a></li><li class="h2"><a href="#embedded-geojson-layer">Embedded GeoJSON layer</a></li><li class="h2"><a href="#http-api">HTTP API</a></li><li class="h2"><a href="#build-and-test">Build and test</a></li><li class="h2"><a href="#troubleshooting">Troubleshooting</a></li><li class="h2"><a href="#related-tools-and-references">Related tools and references</a></li><li class="h2"><a href="#license">License</a></li></ul></details><h1 id="duckgl">DuckGL</h1>
+<p>Explore DuckDB spatial data on an interactive map, run SQL, and export data,
+images, and shareable HTML. DuckGL runs a local HTTP server inside DuckDB and
+uses MapLibre GL and Deck.gl in your browser.</p>
+<p><img src="https://raw.githubusercontent.com/nkwork9999/duckgl/100823952a6f06537a128d9fc8c06acb65a40d7a/images/duckgl-workspace.png" alt="DuckGL workspace with table selection, SQL, export controls and a map" /></p>
+<h2 id="quick-start">Quick start</h2>
+<p>The source in this repository targets <strong>DuckDB 2.0.0</strong>. Use a matching extension
+build; the community package available for your DuckDB version may differ from
+this source revision.</p>
+<pre><code class="language-sql">INSTALL spatial;
+LOAD spatial;
+INSTALL duckgl FROM community;
+LOAD duckgl;
+
+CREATE TABLE cities AS
+SELECT 'Tokyo' AS name, 14000000 AS population,
+       ST_Point(139.6917, 35.6895) AS shape
+UNION ALL SELECT 'Osaka', 2750000, ST_Point(135.5023, 34.6937)
+UNION ALL SELECT 'Nagoya', 2300000, ST_Point(136.9066, 35.1815);
+
+SELECT duckgl_start('127.0.0.1', 8080);
+-- Select cities in the browser sidebar.
+-- Keep this DuckDB session open while using the workspace.
+
+-- When finished:
+SELECT duckgl_stop();
+</code></pre>
+<p>For a locally built extension, replace <code>INSTALL</code>/<code>LOAD duckgl</code> with
+<code>LOAD './build/release/extension/duckgl/duckgl.duckdb_extension';</code> and start the
+CLI with <code>duckdb -unsigned</code> for an unsigned development build.</p>
+<h2 id="workspace">Workspace</h2>
+<p>Select a table to display its geometry. <strong>Preview rows</strong> runs a quoted,
+database-qualified <code>SELECT ... LIMIT 200</code>. <strong>Run query</strong> executes the SQL editor;
+Ctrl/⌘ + Enter is the keyboard shortcut. Result previews show at most 200 rows;
+query exports include every row returned by that query, including any explicit
+SQL <code>LIMIT</code>.</p>
+<p>The sidebar shows <code>database.schema</code> and searches the database, schema and table
+names. Tables with the same name in different attached databases remain distinct.
+Use <strong>Refresh</strong> after creating or attaching tables.</p>
+<h3 id="ten-new-capabilities">Ten new capabilities</h3>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>How to use it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CSV results</td>
+<td>Choose <strong>CSV · query</strong>, then <strong>Download</strong>.</td>
+</tr>
+<tr>
+<td>JSON results</td>
+<td>Choose <strong>JSON · query</strong> to retain JSON types.</td>
+</tr>
+<tr>
+<td>GeoJSON data</td>
+<td>Choose <strong>GeoJSON · map</strong> for the last successfully loaded geometry.</td>
+</tr>
+<tr>
+<td>SVG overview</td>
+<td>Choose <strong>SVG · map overview</strong> for editable vector geometry.</td>
+</tr>
+<tr>
+<td>PNG overview</td>
+<td>Choose <strong>PNG · map overview</strong> for a 1000 × 450 image.</td>
+</tr>
+<tr>
+<td>Interactive HTML map</td>
+<td>Choose <strong>Interactive HTML · map</strong> for a shareable, server-independent map.</td>
+</tr>
+<tr>
+<td>Column inspection and geometry selection</td>
+<td>Open <strong>Columns</strong> and select a <strong>Geometry column</strong>.</td>
+</tr>
+<tr>
+<td>Coordinate system conversion</td>
+<td>Set <strong>Source CRS</strong>, then reload the map.</td>
+</tr>
+<tr>
+<td>SQL results on the map</td>
+<td>Write a spatial <code>SELECT</code>, then choose <strong>Map query</strong>.</td>
+</tr>
+<tr>
+<td>Feature inspection</td>
+<td>Click a feature to display its complete properties.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="geometry-columns">Geometry columns</h3>
+<p>DuckGL detects <code>GEOMETRY</code> columns by type, including arbitrary names such as
+<code>shape</code> or <code>位置</code>. <strong>Automatic</strong> prefers <code>geometry</code>, <code>geom</code>, then <code>the_geom</code>
+(case insensitive), followed by the first geometry column in table order.
+A text column named <code>geometry</code> is ignored.</p>
+<p>To display a different geometry from a table with several geometry columns,
+choose it in <strong>Geometry column</strong>, then press <strong>Show on map</strong>. <strong>Columns</strong> lists
+all column names and SQL types for the selected table.</p>
+<h3 id="coordinate-accuracy">Coordinate accuracy</h3>
+<p><strong>Source CRS</strong> defaults to <code>EPSG:4326</code>. Enter the coordinate system of your input,
+for example <code>EPSG:3857</code>, and choose <strong>Show on map</strong> or <strong>Map query</strong>. DuckGL uses
+DuckDB spatial's <code>ST_Transform</code> to convert to WGS84 longitude/latitude. Coordinate
+axis order is explicitly <strong>X/Y</strong>: longitude/latitude for WGS84 and
+easting/northing for projected data. The input coordinate system is a user choice;
+DuckGL does not infer it from coordinate ranges.</p>
+<pre><code class="language-sql">CREATE TABLE projected_cities AS
+SELECT name,
+       ST_Transform(shape, 'EPSG:4326', 'EPSG:3857', true) AS shape
+FROM cities;
+-- Select projected_cities and set Source CRS to EPSG:3857.
+</code></pre>
+<p>Use <strong>Source CRS = EPSG:4326</strong> when your SQL already returns WGS84 geometries.
+Changing the source CRS changes the map representation and subsequent map
+exports; it does not modify the source table.</p>
+<h3 id="map-a-sql-query">Map a SQL query</h3>
+<p>Queries can filter, join or compute geometries before visualization:</p>
+<pre><code class="language-sql">SELECT name, population, shape
+FROM cities
+WHERE population &gt;= 2500000
+ORDER BY population DESC;
+</code></pre>
+<p>Choose <strong>Map query</strong>. It accepts a single <code>SELECT</code>, including a <code>WITH</code> query,
+with at least one <code>GEOMETRY</code> result column. If the query renames a geometry
+column, choose <strong>Automatic</strong> or a matching column name. Its attributes are the
+other result columns. NULL geometries are omitted from the map.</p>
+<p>Map queries and tabular queries keep their last successful snapshots separately.
+Editing the SQL editor afterward does not change a saved map's SQL provenance
+or relabel existing results. Click any rendered feature to inspect values;
+Boolean, zero and NULL values remain distinguishable.</p>
+<h2 id="export-formats">Export formats</h2>
+<p><strong>Export HTML</strong> and <strong>Export PDF</strong> create a report. The <strong>Download format</strong> menu
+adds data, vector/image and interactive-map exports.</p>
+<table>
+<thead>
+<tr>
+<th>Format</th>
+<th>Contents</th>
+<th>Opens offline</th>
+<th>Base-map tiles</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>HTML report</td>
+<td>Last successful tabular SQL and all its rows, plus loaded geometry and map SQL when present</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr>
+<td>PDF report</td>
+<td>Same report through the browser's print dialog; choose <strong>Save as PDF</strong></td>
+<td>Yes, after saving</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Interactive HTML</td>
+<td>Embedded GeoJSON, map label, map SQL and current camera; pan/zoom and inspect features</td>
+<td>Internet needed for libraries/tiles; DuckGL server can be stopped</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>CSV</td>
+<td>Last successful tabular result; UTF-8 with BOM, CRLF rows and quoted fields</td>
+<td>Yes</td>
+<td>—</td>
+</tr>
+<tr>
+<td>JSON</td>
+<td>Last successful tabular result as an array of row objects</td>
+<td>Yes</td>
+<td>—</td>
+</tr>
+<tr>
+<td>GeoJSON</td>
+<td>Last successful map result as a FeatureCollection, in WGS84</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr>
+<td>SVG</td>
+<td>Geometry overview with north up, polygon holes and vector points/lines</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr>
+<td>PNG</td>
+<td>Raster version of the geometry overview, 1000 × 450 pixels</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+</tbody>
+</table>
+<p>SVG, PNG and report maps fit the entire geometry in longitude/latitude. They are
+geometry overviews; their extent and appearance differ from the interactive
+map's current camera and basemap. Interactive HTML keeps the camera when available
+and needs no API connection or Mapbox token. It includes the loaded data, so it can
+be moved to another machine or served as a static page. Its browser fetches
+MapLibre, Deck.gl and public Carto basemap tiles when opened.</p>
+<p>CSV represents NULL as an empty field. JSON and GeoJSON retain NULL and Boolean
+values. Integer tokens outside JavaScript's safe range
+(<code>-9007199254740991</code> through <code>9007199254740991</code>) are JSON strings, for example
+<code>&quot;9007199254740993&quot;</code>, to retain every digit. Other finite numeric values use JSON
+numbers; non-finite numeric values use JSON null. Floating-point and decimal
+values follow normal browser numeric precision.</p>
+<p>Saved reports contain no scripts or SQL requests. Interactive HTML includes
+scripts for map interaction and safely embeds data, including Japanese, quotes,
+and strings containing HTML. Neither type runs the saved SQL when reopened.</p>
+<h2 id="sql-functions">SQL functions</h2>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>duckgl_start(host VARCHAR, port INTEGER)</code></td>
+<td>Starts the server, opens a browser and returns a status message.</td>
+</tr>
+<tr>
+<td><code>duckgl_stop()</code></td>
+<td>Stops the server, or returns <code>No server running</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Ports must be between 1 and 65535. Use a loopback host such as <code>127.0.0.1</code> for a
+local workspace. The server shares the running DuckDB database. It accepts SQL
+from the workspace/API, so bind it only to an interface you intend to expose.</p>
+<h2 id="embedded-geojson-layer">Embedded GeoJSON layer</h2>
+<p>For a host application, load this version of DuckGL and spatial on a dedicated
+DuckDB connection. Create and commit a view in the primary database's main
+schema with a WGS84 column named <code>geometry</code> and only the public properties.
+Select that view in trusted host code. The Python interface in <code>python/duckgl_embedded.py</code>
+publishes an in-memory snapshot for the lifetime of the context:</p>
+<pre><code class="language-python">with PublishedLayer(connection, &quot;public_stations&quot;) as url:
+    serve_authorized_map_request(url)
+</code></pre>
+<p>The embedded listener binds to loopback on an ephemeral port. Its single route
+is <code>GET /api/layer</code>. It serves the snapshot directly and rejects request
+parameters. The host owns tenant authentication, view selection and the response
+sent to remote users. Size the view for memory and keep the listener inside the
+tenant's private worker. Reopen the layer to refresh the snapshot.</p>
+<p>For host-side point queries, register a WGS84 relation with unique <code>feature_id</code>, <code>longitude</code>, <code>latitude</code>, and <code>label</code>. <code>PointLayer(connection, relation).fetch(Viewport(west, south, east, north))</code> projects those columns within the viewport. A west bound larger than the east bound crosses the antimeridian. <code>fetch_at_zoom(viewport, zoom)</code> aggregates into world-aligned degree grid cells for zooms 0–13 and returns points for zooms 14–30.</p>
+<p>To run the Python integration tests against a trusted local build, install
+matching Python DuckDB and spatial, then run:</p>
+<pre><code class="language-sh">DUCKGL_TEST_EXTENSION=&quot;$PWD/build/release/extension/duckgl/duckgl.duckdb_extension&quot; python3 -m unittest discover -s python -v
+</code></pre>
+<h2 id="http-api">HTTP API</h2>
+<p>All data endpoints return JSON. SQL errors contain an <code>error</code> field; map errors
+also contain an empty FeatureCollection. Check <code>error</code> as well as HTTP status.</p>
+<table>
+<thead>
+<tr>
+<th>Endpoint</th>
+<th>Method</th>
+<th>Request / response</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/</code></td>
+<td>GET</td>
+<td>Map workspace HTML.</td>
+</tr>
+<tr>
+<td><code>/api/tables</code></td>
+<td>GET</td>
+<td>Array of <code>table_name</code>, <code>table_schema</code>, <code>table_catalog</code>.</td>
+</tr>
+<tr>
+<td><code>/api/columns/{table}</code></td>
+<td>GET</td>
+<td>Array of <code>column_name</code>, <code>data_type</code>, <code>is_geometry</code>.</td>
+</tr>
+<tr>
+<td><code>/api/query</code></td>
+<td>POST</td>
+<td>Raw SQL body → array of row objects.</td>
+</tr>
+<tr>
+<td><code>/api/geojson/{table}</code></td>
+<td>GET</td>
+<td>Table → GeoJSON FeatureCollection.</td>
+</tr>
+<tr>
+<td><code>/api/query-map</code></td>
+<td>POST</td>
+<td>Raw single-SELECT SQL body → GeoJSON FeatureCollection.</td>
+</tr>
+</tbody>
+</table>
+<p><code>/api/columns/{table}</code> and <code>/api/geojson/{table}</code> accept <code>schema</code> (default <code>main</code>) and <code>catalog</code>
+(default the connection's current database). Map endpoints also accept
+<code>geometry</code> (result/table column name; omitted means automatic) and <code>source_crs</code>
+(default <code>EPSG:4326</code>). URL-encode table path segments and parameter values.</p>
+<pre><code class="language-sh">curl 'http://127.0.0.1:8080/api/columns/cities?schema=main'
+curl 'http://127.0.0.1:8080/api/geojson/projected_cities?geometry=shape&amp;source_crs=EPSG%3A3857' &gt; cities.geojson
+curl -H 'Content-Type: text/plain' --data-binary \
+  'SELECT name, shape FROM cities WHERE population &gt;= 2500000' \
+  http://127.0.0.1:8080/api/query-map &gt; selected-cities.geojson
+</code></pre>
+<h2 id="build-and-test">Build and test</h2>
+<p>A C++17 compiler, CMake, Make, Python 3 and Git are needed for the extension.
+Node.js 22 and Playwright are used for browser tests. The pinned DuckDB source is
+<code>d54cbbe3df17e8e5ce68312f483b4155836112aa</code> (<code>v2.0.0</code>).</p>
+<pre><code class="language-sh">git clone --recurse-submodules https://github.com/nkwork9999/duckgl.git
+cd duckgl
+make release
+
+bash scripts/test-unit.sh
+npm ci --prefix test
+npx --prefix test playwright install chromium
+node test/browser.test.cjs
+node test/export.test.cjs
+node --test test/features.test.cjs
+</code></pre>
+<p>To use installed Chrome, prefix browser commands with <code>UI_BROWSER_CHANNEL=chrome</code>.
+For real extension-loader, HTTP and spatial tests, see <a href="https://github.com/nkwork9999/duckgl/blob/100823952a6f06537a128d9fc8c06acb65a40d7a/test/README.md">test/README.md</a>.
+Version/build maintenance notes are in <a href="https://github.com/nkwork9999/duckgl/blob/100823952a6f06537a128d9fc8c06acb65a40d7a/docs/UPDATING.md">docs/UPDATING.md</a>.</p>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<table>
+<thead>
+<tr>
+<th>Symptom</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Spatial extension not available</td>
+<td>Run <code>INSTALL spatial; LOAD spatial;</code> in the matching DuckDB version.</td>
+</tr>
+<tr>
+<td>No geometry column</td>
+<td>Select a <code>GEOMETRY</code> column; inspect <strong>Columns</strong> or use a spatial <code>SELECT</code>.</td>
+</tr>
+<tr>
+<td>Features are outside the expected location</td>
+<td>Confirm <strong>Source CRS</strong> and X/Y axis order.</td>
+</tr>
+<tr>
+<td>Query geometry name differs from the selected table</td>
+<td>Choose <strong>Automatic</strong> before <strong>Map query</strong>.</td>
+</tr>
+<tr>
+<td>Map libraries or tiles fail to load</td>
+<td>Restore internet access and reload; tabular queries and offline report/data exports remain usable.</td>
+</tr>
+<tr>
+<td>Download is disabled</td>
+<td>Run a tabular query for CSV/JSON or load geometry for map formats.</td>
+</tr>
+<tr>
+<td>PDF window does not open</td>
+<td>Allow the workspace's pop-up, then choose <strong>Save as PDF</strong> in the print dialog.</td>
+</tr>
+<tr>
+<td>Extension version mismatch</td>
+<td>Use a DuckGL build matching the runtime; this source targets DuckDB 2.0.0.</td>
+</tr>
+<tr>
+<td>Port already in use</td>
+<td>Choose another port or stop the process occupying it.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="related-tools-and-references">Related tools and references</h2>
+<p>The export workflow draws on the distinction between interactive HTML, images,
+and reusable data described in <a href="https://docs.kepler.gl/docs/user-guides/k-save-and-export">kepler.gl's export guide</a>.
+<a href="https://github.com/nkwork9999/miniplot">Miniplot</a> offers SQL-driven HTML charts;
+DuckGL applies a similar shareable-HTML workflow to spatial data.</p>
+<ul>
+<li><a href="https://duckdb.org/docs/current/core_extensions/spatial/functions">DuckDB spatial functions and CRS transformation</a></li>
+<li><a href="https://maplibre.org/maplibre-gl-js/docs/">MapLibre GL JS</a></li>
+<li><a href="https://deck.gl/">Deck.gl</a></li>
+</ul>
+<h2 id="license">License</h2>
+<p>MIT — see <a href="https://github.com/nkwork9999/duckgl/blob/100823952a6f06537a128d9fc8c06acb65a40d7a/LICENSE">LICENSE</a>.</p>
+
+<footer>対応ソース <a href="https://github.com/nkwork9999/duckgl/tree/100823952a6f06537a128d9fc8c06acb65a40d7a"><code>100823952a6f</code></a> · DuckDB 2.0.0</footer>
+</main></div></body></html>

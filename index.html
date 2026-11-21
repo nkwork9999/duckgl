@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="DuckDB spatialの地物を地図に表示し、検索、分析、公開、エクスポートする拡張。">
+<title>概要 · DuckGL</title><link rel="stylesheet" href="style.css">
+<script src="search.js" defer></script>
+</head>
+<body data-project="duckgl">
+<a class="skip" href="#main">本文へ移動</a>
+<header class="masthead"><a href="index.html" class="product">DuckGL</a>
+<a href="https://github.com/nkwork9999/duckgl">GitHub ↗</a></header>
+<div class="layout"><nav aria-label="ドキュメント"><a href="index.html" aria-current="page">概要</a><a href="functions.html">SQL リファレンス</a><a href="python.html">Python 組み込み API</a><a href="guide.html">利用ガイド</a></nav>
+<main id="main"><section class="intro"><h1>DuckGL</h1><p>DuckDB spatialの地物を地図に表示し、検索、分析、公開、エクスポートする拡張。</p>
+<div class="quick-links"><a href="guide.html">利用ガイド</a><a href="functions.html">SQL リファレンス</a></div></section>
+<h2>クイックスタート</h2><pre><code>INSTALL spatial;
+INSTALL duckgl FROM community;
+LOAD spatial;
+LOAD duckgl;
+SELECT duckgl_start(&#x27;127.0.0.1&#x27;, 8080);</code></pre>
+<h2>機能ガイド</h2><div class="sections"><a class="section" href="guide.html"><strong>地図ワークスペース</strong><span>テーブル・地物・属性の表示、座標系の選択、地図とSQLの操作を説明します。</span></a><a class="section" href="guide.html"><strong>エクスポート</strong><span>GeoJSON、CSV、JSON、SVG、PNG、HTML、PDFの用途を確認できます。</span></a><a class="section" href="python.html"><strong>アプリへの組み込み</strong><span>ホストが選んだレイヤーの公開、ビューポート検索、グリッド集約を実行します。</span></a><a class="section" href="functions.html"><strong>サーバー API</strong><span>起動・停止とループバックのレイヤー公開関数を確認できます。</span></a></div>
+<h2>関連ツール</h2><div class="siblings"><a href="https://nkwork9999.github.io/duck-orch/">duckOrch</a><a href="https://nkwork9999.github.io/duckSMILES/">duckSMILES</a><a href="https://nkwork9999.github.io/miniplot/">Miniplot</a></div>
+
+<footer>対応ソース <a href="https://github.com/nkwork9999/duckgl/tree/100823952a6f06537a128d9fc8c06acb65a40d7a"><code>100823952a6f</code></a> · DuckDB 2.0.0</footer>
+</main></div></body></html>
