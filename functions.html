@@ -1,16 +1,16 @@
 <!doctype html>
-<html lang="ja">
+<html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="DuckDB spatialの地物を地図に表示し、検索、分析、公開、エクスポートする拡張。">
-<title>SQL リファレンス · DuckGL</title><link rel="stylesheet" href="style.css">
+<meta name="description" content="Explore, analyze, publish, and export maps from DuckDB spatial data.">
+<title>SQL reference · DuckGL</title><link rel="stylesheet" href="style.css">
 <script src="search.js" defer></script>
 </head>
 <body data-project="duckgl">
-<a class="skip" href="#main">本文へ移動</a>
+<a class="skip" href="#main">Skip to content</a>
 <header class="masthead"><a href="index.html" class="product">DuckGL</a>
 <a href="https://github.com/nkwork9999/duckgl">GitHub ↗</a></header>
-<div class="layout"><nav aria-label="ドキュメント"><a href="index.html">概要</a><a href="functions.html" aria-current="page">SQL リファレンス</a><a href="python.html">Python 組み込み API</a><a href="guide.html">利用ガイド</a></nav>
-<main id="main"><h1>SQL リファレンス</h1><p>4種類・4シグネチャ。関数名、型、説明で検索できます。</p><label class="search">SQL 関数を検索<input id="filter" type="search" autocomplete="off"></label><p id="matches" role="status"></p><details id="duckgl_start" class="entry searchable"><summary><code>duckgl_start</code><span>scalar</span></summary><div class="overload"><code>duckgl_start(VARCHAR, INTEGER) → VARCHAR</code><p>指定ホストとポートでワークスペースを起動します。ローカルから使う場合はループバックを指定します。</p></div></details><details id="duckgl_start_layer" class="entry searchable"><summary><code>duckgl_start_layer</code><span>scalar</span></summary><div class="overload"><code>duckgl_start_layer(INTEGER, VARCHAR) → INTEGER</code><p>ホストが指定したWGS84ビューのスナップショットをループバックに公開します。戻り値は接続先ポートです。</p></div></details><details id="duckgl_stop" class="entry searchable"><summary><code>duckgl_stop</code><span>scalar</span></summary><div class="overload"><code>duckgl_stop() → VARCHAR</code><p>起動したワークスペースのサーバーを停止します。</p></div></details><details id="duckgl_stop_layer" class="entry searchable"><summary><code>duckgl_stop_layer</code><span>scalar</span></summary><div class="overload"><code>duckgl_stop_layer() → BOOLEAN</code><p>同じDuckDB接続で公開した埋め込みレイヤーを停止します。</p></div></details>
-<footer>対応ソース <a href="https://github.com/nkwork9999/duckgl/tree/100823952a6f06537a128d9fc8c06acb65a40d7a"><code>100823952a6f</code></a> · DuckDB 2.0.0</footer>
+<div class="layout"><nav aria-label="Documentation"><a href="index.html">Overview</a><a href="functions.html" aria-current="page">SQL reference</a><a href="python.html">Embedded Python API</a><a href="guide.html">User guide</a></nav>
+<main id="main"><h1>SQL reference</h1><p>4 function names and 4 signatures. Search by name, type, or description.</p><label class="search">Search SQL functions<input id="filter" type="search" autocomplete="off"></label><p id="matches" role="status"></p><details id="duckgl_start" class="entry searchable"><summary><code>duckgl_start</code><span>scalar</span></summary><div class="overload"><code>duckgl_start(VARCHAR, INTEGER) → VARCHAR</code><p>Start a map workspace on the specified host and port. Use a loopback address for local access.</p></div></details><details id="duckgl_start_layer" class="entry searchable"><summary><code>duckgl_start_layer</code><span>scalar</span></summary><div class="overload"><code>duckgl_start_layer(INTEGER, VARCHAR) → INTEGER</code><p>Publish a snapshot of the host-selected WGS84 view on loopback. Return the port number.</p></div></details><details id="duckgl_stop" class="entry searchable"><summary><code>duckgl_stop</code><span>scalar</span></summary><div class="overload"><code>duckgl_stop() → VARCHAR</code><p>Stop the map workspace server.</p></div></details><details id="duckgl_stop_layer" class="entry searchable"><summary><code>duckgl_stop_layer</code><span>scalar</span></summary><div class="overload"><code>duckgl_stop_layer() → BOOLEAN</code><p>Stop the embedded layer published by the same DuckDB connection.</p></div></details>
+<footer>Source revision <a href="https://github.com/nkwork9999/duckgl/tree/fa6bdef372dc17a931bfa994e33e98ccc02fe5ba"><code>fa6bdef372dc</code></a> · DuckDB 2.0.0</footer>
 </main></div></body></html>

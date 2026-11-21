@@ -1,21 +1,22 @@
 <!doctype html>
-<html lang="ja">
+<html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="DuckDB spatialの地物を地図に表示し、検索、分析、公開、エクスポートする拡張。">
-<title>利用ガイド · DuckGL</title><link rel="stylesheet" href="style.css">
+<meta name="description" content="Explore, analyze, publish, and export maps from DuckDB spatial data.">
+<title>User guide · DuckGL</title><link rel="stylesheet" href="style.css">
 <script src="search.js" defer></script>
 </head>
 <body data-project="duckgl">
-<a class="skip" href="#main">本文へ移動</a>
+<a class="skip" href="#main">Skip to content</a>
 <header class="masthead"><a href="index.html" class="product">DuckGL</a>
 <a href="https://github.com/nkwork9999/duckgl">GitHub ↗</a></header>
-<div class="layout"><nav aria-label="ドキュメント"><a href="index.html">概要</a><a href="functions.html">SQL リファレンス</a><a href="python.html">Python 組み込み API</a><a href="guide.html" aria-current="page">利用ガイド</a></nav>
-<main id="main"><details class="toc" open><summary>このページの目次</summary><ul><li class="h2"><a href="#quick-start">Quick start</a></li><li class="h2"><a href="#workspace">Workspace</a></li><li class="h3"><a href="#ten-new-capabilities">Ten new capabilities</a></li><li class="h3"><a href="#geometry-columns">Geometry columns</a></li><li class="h3"><a href="#coordinate-accuracy">Coordinate accuracy</a></li><li class="h3"><a href="#map-a-sql-query">Map a SQL query</a></li><li class="h2"><a href="#export-formats">Export formats</a></li><li class="h2"><a href="#sql-functions">SQL functions</a></li><li class="h2"><a href="#embedded-geojson-layer">Embedded GeoJSON layer</a></li><li class="h2"><a href="#http-api">HTTP API</a></li><li class="h2"><a href="#build-and-test">Build and test</a></li><li class="h2"><a href="#troubleshooting">Troubleshooting</a></li><li class="h2"><a href="#related-tools-and-references">Related tools and references</a></li><li class="h2"><a href="#license">License</a></li></ul></details><h1 id="duckgl">DuckGL</h1>
+<div class="layout"><nav aria-label="Documentation"><a href="index.html">Overview</a><a href="functions.html">SQL reference</a><a href="python.html">Embedded Python API</a><a href="guide.html" aria-current="page">User guide</a></nav>
+<main id="main"><details class="toc" open><summary>On this page</summary><ul><li class="h2"><a href="#quick-start">Quick start</a></li><li class="h2"><a href="#workspace">Workspace</a></li><li class="h3"><a href="#ten-new-capabilities">Ten new capabilities</a></li><li class="h3"><a href="#geometry-columns">Geometry columns</a></li><li class="h3"><a href="#coordinate-accuracy">Coordinate accuracy</a></li><li class="h3"><a href="#map-a-sql-query">Map a SQL query</a></li><li class="h2"><a href="#export-formats">Export formats</a></li><li class="h2"><a href="#sql-functions">SQL functions</a></li><li class="h2"><a href="#embedded-geojson-layer">Embedded GeoJSON layer</a></li><li class="h2"><a href="#http-api">HTTP API</a></li><li class="h2"><a href="#build-and-test">Build and test</a></li><li class="h2"><a href="#troubleshooting">Troubleshooting</a></li><li class="h2"><a href="#related-tools-and-references">Related tools and references</a></li><li class="h2"><a href="#license">License</a></li></ul></details><h1 id="duckgl">DuckGL</h1>
+<p><a href="https://nkwork9999.github.io/duckgl/">Full documentation</a></p>
 <p>Explore DuckDB spatial data on an interactive map, run SQL, and export data,
 images, and shareable HTML. DuckGL runs a local HTTP server inside DuckDB and
 uses MapLibre GL and Deck.gl in your browser.</p>
-<p><img src="https://raw.githubusercontent.com/nkwork9999/duckgl/100823952a6f06537a128d9fc8c06acb65a40d7a/images/duckgl-workspace.png" alt="DuckGL workspace with table selection, SQL, export controls and a map" /></p>
+<p><img src="https://raw.githubusercontent.com/nkwork9999/duckgl/fa6bdef372dc17a931bfa994e33e98ccc02fe5ba/images/duckgl-workspace.png" alt="DuckGL workspace with table selection, SQL, export controls and a map" /></p>
 <h2 id="quick-start">Quick start</h2>
 <p>The source in this repository targets <strong>DuckDB 2.0.0</strong>. Use a matching extension
 build; the community package available for your DuckDB version may differ from
@@ -103,7 +104,7 @@ Use <strong>Refresh</strong> after creating or attaching tables.</p>
 </table>
 <h3 id="geometry-columns">Geometry columns</h3>
 <p>DuckGL detects <code>GEOMETRY</code> columns by type, including arbitrary names such as
-<code>shape</code> or <code>位置</code>. <strong>Automatic</strong> prefers <code>geometry</code>, <code>geom</code>, then <code>the_geom</code>
+<code>shape</code> or <code>location_data</code>. <strong>Automatic</strong> prefers <code>geometry</code>, <code>geom</code>, then <code>the_geom</code>
 (case insensitive), followed by the first geometry column in table order.
 A text column named <code>geometry</code> is ignored.</p>
 <p>To display a different geometry from a table with several geometry columns,
@@ -241,6 +242,22 @@ and strings containing HTML. Neither type runs the saved SQL when reopened.</p>
 local workspace. The server shares the running DuckDB database. It accepts SQL
 from the workspace/API, so bind it only to an interface you intend to expose.</p>
 <h2 id="embedded-geojson-layer">Embedded GeoJSON layer</h2>
+<p>A host can register optional <code>AttributeColumn</code> values when constructing a <code>PointLayer</code>. Pass a tree of
+<code>AttributeFilter</code>, <code>AllOf</code> and <code>AnyOf</code> nodes as the <code>where</code> argument to point or grid queries. Only registered
+attributes are available and values are bound as query parameters. With a registered <code>TIMESTAMPTZ</code> column,
+<code>time=TimeRange(start, end)</code> filters absolute instants in a half-open interval.
+<code>polygon_statistics(ring, sum_attribute=&quot;population&quot;)</code> counts original WGS84 points inside or on a closed
+selection ring and sums one registered numeric attribute. The connection needs the spatial extension loaded.
+Split rings at the antimeridian before calling this method.
+<code>LayerRegistry</code> binds application-level <code>LayerId</code> values to explicit catalog, relation and version records.
+It checks the application's grant callback on every fetch and rejects registrations whose catalog was replaced.
+<code>VectorTileLayer</code> encodes a registered EPSG:3857 geometry relation as a Mapbox Vector Tile. Give it a
+unique nonnegative integer <code>feature_id</code> column and the attributes to publish.
+<code>TileCache</code> bounds the number and bytes of cached tiles by tenant, layer, visibility, source version,
+projection and tile coordinates. Include the filter and tile format choices in the projection identity.
+The host supplies the current authorization callback and can omit the response body on an ETag match.
+<code>SharedTileWork.subscribe</code> lets authorized requests for the same versioned scope share a generation job.
+The generator receives a cancellation event that is set when the last subscriber cancels.</p>
 <p>For a host application, load this version of DuckGL and spatial on a dedicated
 DuckDB connection. Create and commit a view in the primary database's main
 schema with a WGS84 column named <code>geometry</code> and only the public properties.
@@ -255,6 +272,19 @@ parameters. The host owns tenant authentication, view selection and the response
 sent to remote users. Size the view for memory and keep the listener inside the
 tenant's private worker. Reopen the layer to refresh the snapshot.</p>
 <p>For host-side point queries, register a WGS84 relation with unique <code>feature_id</code>, <code>longitude</code>, <code>latitude</code>, and <code>label</code>. <code>PointLayer(connection, relation).fetch(Viewport(west, south, east, north))</code> projects those columns within the viewport. A west bound larger than the east bound crosses the antimeridian. <code>fetch_at_zoom(viewport, zoom)</code> aggregates into world-aligned degree grid cells for zooms 0–13 and returns points for zooms 14–30.</p>
+<p>Use <code>GeometryLayer(connection, relation, source_crs=..., attributes=...)</code> for exact viewport selection
+from registered <code>feature_id</code> and <code>geometry</code> columns. The source CRS must be known. For a WGS84 shape
+that crosses the antimeridian, split the geometry on that line at ingest while keeping one feature ID.
+<code>RegionalStatistics(connection, points, regions)</code> counts points in registered, same-CRS polygons.
+Choose <code>BoundaryAssignment.ALL_MATCHES</code> or <code>LOWEST_ID</code> for overlapping polygons and boundary points.
+The result includes zero-count regions, unmatched points and missing positions.
+Only explicitly registered attributes are returned. For point layers, register separate detail properties
+through <code>RegisteredLayer(details=...)</code> and request up to 256 IDs with
+<code>LayerRegistry.details(principal, layer_id, version=..., feature_ids=...)</code>. Use a registered relation
+whose rows are all visible to the principals authorized for that layer.
+<code>TileOccupancy.build(layer, version)</code> uses an
+immutable Web Mercator point snapshot to skip empty vector tiles for that version, including the tile
+buffer. Pass a new version whenever the source changes.</p>
 <p>To run the Python integration tests against a trusted local build, install
 matching Python DuckDB and spatial, then run:</p>
 <pre><code class="language-sh">DUCKGL_TEST_EXTENSION=&quot;$PWD/build/release/extension/duckgl/duckgl.duckdb_extension&quot; python3 -m unittest discover -s python -v
@@ -329,8 +359,8 @@ node test/export.test.cjs
 node --test test/features.test.cjs
 </code></pre>
 <p>To use installed Chrome, prefix browser commands with <code>UI_BROWSER_CHANNEL=chrome</code>.
-For real extension-loader, HTTP and spatial tests, see <a href="https://github.com/nkwork9999/duckgl/blob/100823952a6f06537a128d9fc8c06acb65a40d7a/test/README.md">test/README.md</a>.
-Version/build maintenance notes are in <a href="https://github.com/nkwork9999/duckgl/blob/100823952a6f06537a128d9fc8c06acb65a40d7a/docs/UPDATING.md">docs/UPDATING.md</a>.</p>
+For real extension-loader, HTTP and spatial tests, see <a href="https://github.com/nkwork9999/duckgl/blob/fa6bdef372dc17a931bfa994e33e98ccc02fe5ba/test/README.md">test/README.md</a>.
+Version/build maintenance notes are in <a href="https://github.com/nkwork9999/duckgl/blob/fa6bdef372dc17a931bfa994e33e98ccc02fe5ba/docs/UPDATING.md">docs/UPDATING.md</a>.</p>
 <h2 id="troubleshooting">Troubleshooting</h2>
 <table>
 <thead>
@@ -389,7 +419,7 @@ DuckGL applies a similar shareable-HTML workflow to spatial data.</p>
 <li><a href="https://deck.gl/">Deck.gl</a></li>
 </ul>
 <h2 id="license">License</h2>
-<p>MIT — see <a href="https://github.com/nkwork9999/duckgl/blob/100823952a6f06537a128d9fc8c06acb65a40d7a/LICENSE">LICENSE</a>.</p>
+<p>MIT — see <a href="https://github.com/nkwork9999/duckgl/blob/fa6bdef372dc17a931bfa994e33e98ccc02fe5ba/LICENSE">LICENSE</a>.</p>
 
-<footer>対応ソース <a href="https://github.com/nkwork9999/duckgl/tree/100823952a6f06537a128d9fc8c06acb65a40d7a"><code>100823952a6f</code></a> · DuckDB 2.0.0</footer>
+<footer>Source revision <a href="https://github.com/nkwork9999/duckgl/tree/fa6bdef372dc17a931bfa994e33e98ccc02fe5ba"><code>fa6bdef372dc</code></a> · DuckDB 2.0.0</footer>
 </main></div></body></html>
