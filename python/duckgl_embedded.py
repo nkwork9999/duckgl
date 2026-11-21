@@ -294,6 +294,56 @@ class PointLayer:
         return SelectionStatistics(count, total)
 
 
+class BoundaryAssignment(Enum):
+    ALL_MATCHES = "all_matches"
+    LOWEST_ID = "lowest_id"
+
+
+@dataclass(frozen=True)
+class RegionCounts:
+    region_counts: tuple[tuple[int, int], ...]
+    unmatched: int
+    no_position: int
+
+
+class RegionalStatistics:
+    """Count registered, same-CRS points in regions using inclusive polygon boundaries."""
+
+    def __init__(self, connection: DuckDBPyConnection, points: str, regions: str):
+        self._db = connection
+        self._points = f"main.{_identifier(points)}"
+        self._regions = f"main.{_identifier(regions)}"
+
+    def count(self, assignment: BoundaryAssignment) -> RegionCounts:
+        if type(assignment) is not BoundaryAssignment:
+            raise TypeError("expected a BoundaryAssignment")
+        selected = ("SELECT feature_id, min(region_id) AS region_id FROM covered GROUP BY feature_id"
+                    if assignment is BoundaryAssignment.LOWEST_ID else "SELECT feature_id, region_id FROM covered")
+        rows, unmatched, missing = self._db.execute(f"""
+            WITH input_points AS MATERIALIZED (
+                SELECT feature_id, geometry, geometry IS NOT NULL AND NOT ST_IsEmpty(geometry) AS present
+                FROM {self._points}
+            ), covered AS MATERIALIZED (
+                SELECT p.feature_id, r.region_id
+                FROM input_points AS p JOIN {self._regions} AS r ON ST_Covers(r.geometry, p.geometry)
+                WHERE p.present
+            ), assigned AS (
+                {selected}
+            ), counts AS (
+                SELECT region_id, count(*) AS n FROM assigned GROUP BY region_id
+            ), output AS (
+                SELECT list(struct_pack(id := r.region_id, n := coalesce(c.n, 0)) ORDER BY r.region_id) AS regions
+                FROM {self._regions} AS r LEFT JOIN counts AS c USING (region_id)
+            ), classified AS (
+                SELECT count(*) FILTER (WHERE present AND NOT EXISTS (
+                    SELECT 1 FROM covered AS c WHERE c.feature_id = p.feature_id
+                )) AS unmatched, count(*) FILTER (WHERE NOT present) AS no_position FROM input_points AS p
+            )
+            SELECT regions, unmatched, no_position FROM output CROSS JOIN classified
+        """).fetchone()
+        return RegionCounts(tuple((row["id"], row["n"]) for row in (rows or [])), unmatched, missing)
+
+
 @dataclass(frozen=True)
 class GeometryFeature:
     feature_id: int
