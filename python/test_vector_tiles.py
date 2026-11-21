@@ -4,7 +4,7 @@ from threading import Event
 
 import duckdb
 
-from duckgl_embedded import SharedTileWork, TileCache, TileId, TileScope, VectorTileLayer
+from duckgl_embedded import SharedTileWork, TileCache, TileId, TileOccupancy, TileScope, VectorTileLayer
 
 
 # A small decoder for the wire types in this point/line fixture.
@@ -160,3 +160,23 @@ class VectorTileTests(unittest.TestCase):
             grant = False
             with self.assertRaises(PermissionError):
                 renewed.result(timeout=10)
+
+    def test_empty_occupancy_skips_sql_only_for_its_unchanged_version(self):
+        with duckdb.connect() as db:
+            db.load_extension("spatial")
+            db.execute("CREATE TABLE points AS SELECT 1::BIGINT AS feature_id, ST_Point(100,100) AS geometry")
+            layer = VectorTileLayer(db, "points", "points")
+            occupancy = TileOccupancy.build(layer, "v1", max_zoom=6)
+            distant = TileId(6, 0, 0)
+            center = TileId(6, 32, 31)
+            self.assertFalse(occupancy.might_have_feature("v1", distant))
+            self.assertTrue(occupancy.might_have_feature("v1", center))
+            original_fetch = layer.fetch
+            def no_query(*args, **kwargs):
+                self.fail("no query needed for an empty tile in the occupied snapshot")
+            layer.fetch = no_query
+            self.assertEqual(occupancy.fetch("v1", distant), b"")
+            layer.fetch = original_fetch
+            db.execute("INSERT INTO points VALUES (2, ST_Centroid(ST_TileEnvelope(6,0,0)))")
+            self.assertTrue(occupancy.might_have_feature("v2", distant))
+            self.assertIn(2, decode(occupancy.fetch("v2", distant))[1])

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from hashlib import sha256
-from json import dumps
+from json import dumps, loads
 from math import isfinite
 from threading import Event, Lock
 
@@ -295,6 +295,82 @@ class PointLayer:
 
 
 @dataclass(frozen=True)
+class GeometryFeature:
+    feature_id: int
+    geometry: dict
+    attributes: dict
+
+
+class GeometryLayer:
+    """Project registered geometry attributes and select features by a WGS84 viewport."""
+
+    def __init__(self, connection: DuckDBPyConnection, relation: str, *, source_crs: str,
+                 attributes: Mapping[str, str] | None = None, catalog: str | None = None):
+        if type(source_crs) is not str or not source_crs:
+            raise ValueError("the host must provide the source CRS")
+        self._db = connection
+        self._crs = source_crs
+        schema = "main" if catalog is None else f"{_identifier(catalog)}.main"
+        self._relation = f"{schema}.{_identifier(relation)}"
+        self._attributes = tuple((alias, _identifier(column)) for alias, column in (attributes or {}).items())
+        for alias, _ in self._attributes:
+            _identifier(alias)
+
+    def fetch(self, viewport: Viewport) -> list[GeometryFeature]:
+        """Return each matching ID once, including shapes that touch an edge."""
+        if type(viewport) is not Viewport:
+            raise TypeError("expected a Viewport")
+        if viewport.west <= viewport.east:
+            left, right = [viewport.west], [viewport.east]
+        else:
+            left, right = [viewport.west, -180.0], [180.0, viewport.east]
+        fields = "".join(f", source.{name} AS attr_{i}" for i, (_, name) in enumerate(self._attributes))
+        projected = "".join(f", features.attr_{i}" for i in range(len(self._attributes)))
+        geometry = "source.geometry"
+        parameters = [left, right, viewport.south, viewport.north]
+        materialization = "NOT MATERIALIZED"
+        candidate_bounds, prescan = "", ""
+        if self._crs.upper() != "EPSG:4326":
+            geometry = "ST_Transform(source.geometry, ?, 'EPSG:4326', true)"
+            parameters.append(self._crs)
+            materialization = "MATERIALIZED"
+            if self._crs.upper() == "EPSG:3857":
+                # Mercator is monotonic within each of the split longitude boxes.
+                candidate_bounds = """
+                    , candidate_bounds AS MATERIALIZED (
+                        SELECT ST_Transform(shape, 'EPSG:4326', 'EPSG:3857', true) AS extent
+                        FROM viewport_shapes
+                    )
+                """
+                prescan = """
+                    AND EXISTS (SELECT 1 FROM candidate_bounds
+                                WHERE ST_Intersects_Extent(source.geometry, extent))
+                """
+        rows = self._db.execute(f"""
+            WITH boxes AS (
+                SELECT unnest(?::DOUBLE[]) AS west, unnest(?::DOUBLE[]) AS east,
+                       ?::DOUBLE AS south, ?::DOUBLE AS north
+            ), viewport_shapes AS (
+                SELECT CASE WHEN west = east AND south = north THEN ST_Point(west, south)
+                       WHEN west = east OR south = north THEN ST_MakeLine(ST_Point(west, south), ST_Point(east, north))
+                       ELSE ST_MakeEnvelope(west, south, east, north) END AS shape
+                FROM boxes
+            ) {candidate_bounds}, features AS {materialization} (
+                SELECT source.feature_id, {geometry} AS geometry {fields} FROM {self._relation} AS source
+                WHERE source.geometry IS NOT NULL AND NOT ST_IsEmpty(source.geometry) {prescan}
+            )
+            SELECT features.feature_id, ST_AsGeoJSON(features.geometry) {projected}
+            FROM features WHERE EXISTS (
+                SELECT 1 FROM viewport_shapes WHERE ST_Intersects_Extent(features.geometry, shape)
+                   AND ST_Intersects(features.geometry, shape)
+            )
+            ORDER BY features.feature_id
+        """, parameters).fetchall()
+        names = [key for key, _ in self._attributes]
+        return [GeometryFeature(key, loads(shape), dict(zip(names, attrs))) for key, shape, *attrs in rows]
+
+
+@dataclass(frozen=True)
 class LayerId:
     value: str
 
@@ -396,8 +472,7 @@ class VectorTileLayer:
         """Return an empty tile as zero bytes. Buffer size is in tile coordinates."""
         if type(tile) is not TileId:
             raise TypeError("expected a TileId")
-        if type(buffer) is not int or not 0 <= buffer <= 4096:
-            raise ValueError("buffer must be an integer in [0, 4096]")
+        _validate_buffer(buffer)
         result, = self._db.execute(f"""
             WITH envelope AS (
                 SELECT ST_Extent(ST_TileEnvelope(?, ?, ?)) AS extent, ?::BIGINT AS padding
@@ -419,6 +494,76 @@ class VectorTileLayer:
                   ORDER BY feature_id) AS features
         """, [tile.zoom, tile.x, tile.y, buffer, buffer, self._name]).fetchone()
         return result
+
+
+def _validate_buffer(buffer):
+    if type(buffer) is not int or not 0 <= buffer <= 4096:
+        raise ValueError("buffer must be an integer in [0, 4096]")
+
+
+class TileOccupancy:
+    """Use point occupancy for a committed Web Mercator snapshot to skip empty tiles."""
+
+    def __init__(self, layer, version, levels):
+        self._layer = layer
+        self._version = version
+        self._levels = levels
+
+    @classmethod
+    def build(cls, layer: VectorTileLayer, version: str, *, max_zoom: int = 10,
+              max_cells: int = 500_000) -> "TileOccupancy":
+        if type(layer) is not VectorTileLayer or type(version) is not str or not version:
+            raise TypeError("expected a vector tile layer and a fixed version")
+        if type(max_zoom) is not int or not 0 <= max_zoom <= 22:
+            raise ValueError("max_zoom must be an integer in [0, 22]")
+        if type(max_cells) is not int or max_cells < 1:
+            raise ValueError("max_cells must be positive")
+        with layer._db.cursor() as tx:
+            tx.execute("BEGIN TRANSACTION")
+            nonpoints, = tx.execute(f"""
+                SELECT count(*) FROM {layer._relation}
+                WHERE feature_id >= 0 AND NOT ST_IsEmpty(geometry)
+                  AND CASE WHEN ST_GeometryType(geometry) = 'POINT'
+                      THEN NOT isfinite(ST_X(geometry)) OR NOT isfinite(ST_Y(geometry))
+                      ELSE true END
+            """).fetchone()
+            if nonpoints:
+                raise ValueError("tile occupancy requires a layer of finite Web Mercator points")
+            centers = tx.execute(f"""
+                WITH levels AS (
+                    SELECT zoom, 1::BIGINT << zoom AS side FROM range(? + 1) AS z(zoom)
+                ), coordinates AS (
+                    SELECT (ST_X(geometry) / 40075016.68557849 + 0.5) AS u,
+                           (0.5 - ST_Y(geometry) / 40075016.68557849) AS v
+                    FROM {layer._relation} WHERE feature_id >= 0 AND NOT ST_IsEmpty(geometry)
+                )
+                SELECT DISTINCT zoom, floor(greatest(0, least(side - 1, u * side)))::INT AS x,
+                                      floor(greatest(0, least(side - 1, v * side)))::INT AS y
+                FROM coordinates CROSS JOIN levels LIMIT ?
+            """, [max_zoom, max_cells + 1]).fetchall()
+            tx.execute("COMMIT")
+        if len(centers) > max_cells:
+            raise ValueError("occupied tile count exceeds the registered capacity")
+        indexed = {level: set() for level in range(max_zoom + 1)}
+        for zoom, x, y in centers:
+            indexed[zoom].add((x, y))
+        return cls(layer, version, indexed)
+
+    def might_have_feature(self, version: str, tile: TileId, *, buffer: int = 256) -> bool:
+        if type(tile) is not TileId:
+            raise TypeError("expected a TileId")
+        _validate_buffer(buffer)
+        if self._version != version or tile.zoom not in self._levels:
+            return True
+        occupied = self._levels[tile.zoom]
+        # A full-tile buffer can include a point on the second tile's near edge.
+        offsets = range(-2, 3) if buffer == 4096 else range(-1, 2)
+        return any((tile.x + dx, tile.y + dy) in occupied for dx in offsets for dy in offsets)
+
+    def fetch(self, version: str, tile: TileId, *, buffer: int = 256) -> bytes:
+        if not self.might_have_feature(version, tile, buffer=buffer):
+            return b""
+        return self._layer.fetch(tile, buffer=buffer)
 
 
 @dataclass(frozen=True)

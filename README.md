@@ -201,6 +201,13 @@ tenant's private worker. Reopen the layer to refresh the snapshot.
 
 For host-side point queries, register a WGS84 relation with unique `feature_id`, `longitude`, `latitude`, and `label`. `PointLayer(connection, relation).fetch(Viewport(west, south, east, north))` projects those columns within the viewport. A west bound larger than the east bound crosses the antimeridian. `fetch_at_zoom(viewport, zoom)` aggregates into world-aligned degree grid cells for zooms 0–13 and returns points for zooms 14–30.
 
+Use `GeometryLayer(connection, relation, source_crs=..., attributes=...)` for exact viewport selection
+from registered `feature_id` and `geometry` columns. The source CRS must be known. For a WGS84 shape
+that crosses the antimeridian, split the geometry on that line at ingest while keeping one feature ID.
+Only explicitly registered attributes are returned. `TileOccupancy.build(layer, version)` uses an
+immutable Web Mercator point snapshot to skip empty vector tiles for that version, including the tile
+buffer. Pass a new version whenever the source changes.
+
 To run the Python integration tests against a trusted local build, install
 matching Python DuckDB and spatial, then run:
 
