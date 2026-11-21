@@ -1,5 +1,7 @@
 # DuckGL
 
+[Documentation / 全機能ガイド](https://nkwork9999.github.io/duckgl/)
+
 Explore DuckDB spatial data on an interactive map, run SQL, and export data,
 images, and shareable HTML. DuckGL runs a local HTTP server inside DuckDB and
 uses MapLibre GL and Deck.gl in your browser.
