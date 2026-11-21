@@ -1,8 +1,10 @@
 import unittest
+from concurrent.futures import CancelledError
+from threading import Event
 
 import duckdb
 
-from duckgl_embedded import TileCache, TileId, TileScope, VectorTileLayer
+from duckgl_embedded import SharedTileWork, TileCache, TileId, TileScope, VectorTileLayer
 
 
 # A small decoder for the wire types in this point/line fixture.
@@ -115,3 +117,46 @@ class VectorTileTests(unittest.TestCase):
             self.assertIsNone(result.etag)
             self.assertEqual(result.body, b"tile")
         self.assertEqual(count, 7)
+
+    def test_same_tile_shares_work_and_one_cancel_never_interrupts_other_subscribers(self):
+        scope, tile = TileScope("tenant", "layer", "group", "v1", "label"), TileId(0, 0, 0)
+        entered, release = Event(), Event()
+        calls = []
+        def generate(cancel):
+            calls.append(cancel)
+            entered.set()
+            if not release.wait(timeout=10):
+                raise TimeoutError("test did not release generator")
+            return b"shared"
+        with SharedTileWork(workers=2) as work:
+            first = work.subscribe(scope, tile, generate, authorize=lambda _: True)
+            self.assertTrue(entered.wait(timeout=10))
+            others = [work.subscribe(scope, tile, generate, authorize=lambda _: True) for _ in range(99)]
+            first.cancel()
+            self.assertFalse(calls[0].is_set())
+            with self.assertRaises(CancelledError):
+                first.result()
+            release.set()
+            for subscriber in others:
+                self.assertEqual(subscriber.result(timeout=10), b"shared")
+            self.assertEqual(len(calls), 1)
+
+    def test_last_cancel_signals_generator_and_revoked_subscriber_cannot_read(self):
+        scope, tile = TileScope("tenant", "layer", "group", "v1", "label"), TileId(0, 0, 0)
+        started, stopped = Event(), Event()
+        def generate(cancel):
+            started.set()
+            if cancel.wait(10):
+                stopped.set()
+            return b"tile"
+        with SharedTileWork(workers=1) as work:
+            subscriber = work.subscribe(scope, tile, generate, authorize=lambda _: True)
+            self.assertTrue(started.wait(10))
+            subscriber.cancel()
+            self.assertTrue(stopped.wait(10))
+
+            grant = True
+            renewed = work.subscribe(scope, tile, lambda cancel: b"tile", authorize=lambda _: grant)
+            grant = False
+            with self.assertRaises(PermissionError):
+                renewed.result(timeout=10)

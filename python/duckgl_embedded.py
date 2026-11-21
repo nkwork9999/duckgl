@@ -1,13 +1,14 @@
 """Host-side publication of a single GeoJSON snapshot on loopback."""
 from collections import OrderedDict
 from collections.abc import Callable, Mapping
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from hashlib import sha256
 from json import dumps
 from math import isfinite
-from threading import Lock
+from threading import Event, Lock
 
 from duckdb import DuckDBPyConnection
 
@@ -500,3 +501,110 @@ class TileCache:
         if etag == if_none_match:
             return TileResponse(None, etag, True)
         return TileResponse(body, etag, False)
+
+
+@dataclass
+class _TileFlight:
+    cancellation: Event
+    subscribers: set[Future]
+
+
+class TileSubscription:
+    """One authorized subscriber to shared generation work."""
+
+    def __init__(self, future, release, authorized):
+        self._future = future
+        self._release = release
+        self._authorized = authorized
+
+    def result(self, timeout=None) -> bytes:
+        body = self._future.result(timeout)
+        if not self._authorized():
+            raise PermissionError("tile is unavailable to this principal")
+        return body
+
+    def cancel(self) -> bool:
+        if not self._future.cancel():
+            return False
+        self._release()
+        return True
+
+
+class SharedTileWork:
+    """Coalesce in-flight tile generation while tracking subscriber cancellation."""
+
+    def __init__(self, *, workers: int):
+        if type(workers) is not int or workers <= 0:
+            raise ValueError("workers must be a positive integer")
+        self._executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="duckgl-tile")
+        self._active = {}
+        self._closed = False
+        self._lock = Lock()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
+    def close(self):
+        with self._lock:
+            self._closed = True
+            flights = tuple(self._active.values())
+            self._active.clear()
+        for flight in flights:
+            flight.cancellation.set()
+            for subscriber in flight.subscribers:
+                subscriber.cancel()
+        self._executor.shutdown(cancel_futures=True)
+
+    def subscribe(self, scope: TileScope, tile: TileId, generate: Callable[[Event], bytes], *,
+                  authorize: Callable[[TileScope], bool]) -> TileSubscription:
+        if type(scope) is not TileScope or type(tile) is not TileId:
+            raise TypeError("expected a TileScope and TileId")
+        if not authorize(scope):
+            raise PermissionError("tile is unavailable to this principal")
+        key = (scope, tile) if scope.version is not None else object()
+        subscriber = Future()
+        worker = None
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("tile work pool is closed")
+            flight = self._active.get(key)
+            if flight is None:
+                flight = _TileFlight(Event(), set())
+                self._active[key] = flight
+                worker = self._executor.submit(generate, flight.cancellation)
+            flight.subscribers.add(subscriber)
+        if worker is not None:
+            worker.add_done_callback(lambda completed: self._finish(key, flight, completed))
+        return TileSubscription(subscriber, lambda: self._remove(key, flight, subscriber),
+                                lambda: authorize(scope))
+
+    def _remove(self, key, flight, subscriber):
+        with self._lock:
+            if self._active.get(key) is not flight:
+                return
+            flight.subscribers.discard(subscriber)
+            if not flight.subscribers:
+                self._active.pop(key)
+                flight.cancellation.set()
+
+    def _finish(self, key, flight, worker):
+        with self._lock:
+            if self._active.get(key) is not flight:
+                return
+            self._active.pop(key)
+            subscribers = tuple(flight.subscribers)
+        try:
+            body = worker.result()
+            if type(body) is not bytes:
+                raise TypeError("tile generator must return bytes")
+        except BaseException as error:
+            for subscriber in subscribers:
+                if subscriber.set_running_or_notify_cancel():
+                    subscriber.set_exception(error)
+        else:
+            for subscriber in subscribers:
+                if subscriber.set_running_or_notify_cancel():
+                    subscriber.set_result(body)

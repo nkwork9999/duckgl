@@ -177,6 +177,8 @@ unique nonnegative integer `feature_id` column and the attributes to publish.
 `TileCache` bounds the number and bytes of cached tiles by tenant, layer, visibility, source version,
 projection and tile coordinates. Include the filter and tile format choices in the projection identity.
 The host supplies the current authorization callback and can omit the response body on an ETag match.
+`SharedTileWork.subscribe` lets authorized requests for the same versioned scope share a generation job.
+The generator receives a cancellation event that is set when the last subscriber cancels.
 
 For a host application, load this version of DuckGL and spatial on a dedicated
 DuckDB connection. Create and commit a view in the primary database's main
