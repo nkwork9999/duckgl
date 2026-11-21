@@ -16,7 +16,7 @@
 <p>Explore DuckDB spatial data on an interactive map, run SQL, and export data,
 images, and shareable HTML. DuckGL runs a local HTTP server inside DuckDB and
 uses MapLibre GL and Deck.gl in your browser.</p>
-<p><img src="https://raw.githubusercontent.com/nkwork9999/duckgl/fa6bdef372dc17a931bfa994e33e98ccc02fe5ba/images/duckgl-workspace.png" alt="DuckGL workspace with table selection, SQL, export controls and a map" /></p>
+<p><img src="https://raw.githubusercontent.com/nkwork9999/duckgl/3802d97a9e49276ff45a244bd60c2b923f165050/images/duckgl-workspace.png" alt="DuckGL workspace with table selection, SQL, export controls and a map" /></p>
 <h2 id="quick-start">Quick start</h2>
 <p>The source in this repository targets <strong>DuckDB 2.0.0</strong>. Use a matching extension
 build; the community package available for your DuckDB version may differ from
@@ -275,6 +275,8 @@ tenant's private worker. Reopen the layer to refresh the snapshot.</p>
 <p>Use <code>GeometryLayer(connection, relation, source_crs=..., attributes=...)</code> for exact viewport selection
 from registered <code>feature_id</code> and <code>geometry</code> columns. The source CRS must be known. For a WGS84 shape
 that crosses the antimeridian, split the geometry on that line at ingest while keeping one feature ID.
+Use <code>fetch_clipped(viewport, buffer_degrees=...)</code> to return a display geometry trimmed to that extent
+and its optional buffer. Call <code>fetch(viewport)</code> for the complete WGS84 shape.
 <code>RegionalStatistics(connection, points, regions)</code> counts points in registered, same-CRS polygons.
 Choose <code>BoundaryAssignment.ALL_MATCHES</code> or <code>LOWEST_ID</code> for overlapping polygons and boundary points.
 The result includes zero-count regions, unmatched points and missing positions.
@@ -359,8 +361,8 @@ node test/export.test.cjs
 node --test test/features.test.cjs
 </code></pre>
 <p>To use installed Chrome, prefix browser commands with <code>UI_BROWSER_CHANNEL=chrome</code>.
-For real extension-loader, HTTP and spatial tests, see <a href="https://github.com/nkwork9999/duckgl/blob/fa6bdef372dc17a931bfa994e33e98ccc02fe5ba/test/README.md">test/README.md</a>.
-Version/build maintenance notes are in <a href="https://github.com/nkwork9999/duckgl/blob/fa6bdef372dc17a931bfa994e33e98ccc02fe5ba/docs/UPDATING.md">docs/UPDATING.md</a>.</p>
+For real extension-loader, HTTP and spatial tests, see <a href="https://github.com/nkwork9999/duckgl/blob/3802d97a9e49276ff45a244bd60c2b923f165050/test/README.md">test/README.md</a>.
+Version/build maintenance notes are in <a href="https://github.com/nkwork9999/duckgl/blob/3802d97a9e49276ff45a244bd60c2b923f165050/docs/UPDATING.md">docs/UPDATING.md</a>.</p>
 <h2 id="troubleshooting">Troubleshooting</h2>
 <table>
 <thead>
@@ -419,7 +421,7 @@ DuckGL applies a similar shareable-HTML workflow to spatial data.</p>
 <li><a href="https://deck.gl/">Deck.gl</a></li>
 </ul>
 <h2 id="license">License</h2>
-<p>MIT — see <a href="https://github.com/nkwork9999/duckgl/blob/fa6bdef372dc17a931bfa994e33e98ccc02fe5ba/LICENSE">LICENSE</a>.</p>
+<p>MIT — see <a href="https://github.com/nkwork9999/duckgl/blob/3802d97a9e49276ff45a244bd60c2b923f165050/LICENSE">LICENSE</a>.</p>
 
-<footer>Source revision <a href="https://github.com/nkwork9999/duckgl/tree/fa6bdef372dc17a931bfa994e33e98ccc02fe5ba"><code>fa6bdef372dc</code></a> · DuckDB 2.0.0</footer>
+<footer>Source revision <a href="https://github.com/nkwork9999/duckgl/tree/3802d97a9e49276ff45a244bd60c2b923f165050"><code>3802d97a9e49</code></a> · DuckDB 2.0.0</footer>
 </main></div></body></html>
