@@ -1,4 +1,5 @@
 """Host-side publication of a single GeoJSON snapshot on loopback."""
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
@@ -140,9 +141,10 @@ class PointLayer:
     """
 
     def __init__(self, connection: DuckDBPyConnection, relation: str, *, attributes=None,
-                 time_column: str | None = None):
+                 time_column: str | None = None, catalog: str | None = None):
         self._db = connection
-        self._relation = _identifier(relation)
+        schema = "main" if catalog is None else f"{_identifier(catalog)}.main"
+        self._relation = f"{schema}.{_identifier(relation)}"
         self._time_column = None if time_column is None else _identifier(time_column)
         self._attributes = dict(attributes) if attributes is not None else {}
         if any(type(key) is not str or not key or type(col) is not AttributeColumn
@@ -214,7 +216,7 @@ class PointLayer:
         selection, values = self._viewport_filter(viewport, where, time)
         rows = self._db.execute(f"""
             SELECT feature_id, longitude::DOUBLE, latitude::DOUBLE, label
-            FROM main.{self._relation} {selection} ORDER BY feature_id
+            FROM {self._relation} {selection} ORDER BY feature_id
         """, values).fetchall()
         return [MapPoint(*row) for row in rows]
 
@@ -233,7 +235,7 @@ class PointLayer:
                 SELECT least(2 * n - 1, floor((longitude::DOUBLE + 180) * n / 180))::INTEGER AS x,
                        least(n - 1, floor((latitude::DOUBLE + 90) * n / 180))::INTEGER AS y,
                        longitude::DOUBLE AS lon, latitude::DOUBLE AS lat
-                FROM (SELECT longitude, latitude FROM main.{self._relation} {selection}) AS points
+                FROM (SELECT longitude, latitude FROM {self._relation} {selection}) AS points
                 CROSS JOIN (SELECT ?::INTEGER AS n) AS dimensions
             )
             SELECT x, y, count(*), avg(lon), avg(lat)
@@ -275,7 +277,7 @@ class PointLayer:
             ), points AS (
                 SELECT {projection} AS sample, CASE WHEN checked.valid THEN
                     ST_Covers(checked.area, ST_Point(layer.longitude, layer.latitude)) END AS covered
-                FROM main.{self._relation} AS layer CROSS JOIN checked
+                FROM {self._relation} AS layer CROSS JOIN checked
                 WHERE layer.longitude BETWEEN ? AND ? AND layer.latitude BETWEEN ? AND ?
             )
             SELECT (SELECT valid FROM checked), count(*) FILTER (WHERE covered),
@@ -285,3 +287,66 @@ class PointLayer:
         if not valid:
             raise ValueError("selection ring must form a valid polygon")
         return SelectionStatistics(count, total)
+
+
+@dataclass(frozen=True)
+class LayerId:
+    value: str
+
+    def __post_init__(self):
+        if type(self.value) is not str or not self.value:
+            raise ValueError("layer ID must be a nonempty string")
+
+
+@dataclass(frozen=True)
+class RegisteredLayer:
+    catalog: str
+    relation: str
+    version: str
+    attributes: Mapping[str, AttributeColumn] | None = None
+    time_column: str | None = None
+
+
+class LayerRegistry:
+    """Bind versioned point layers to catalog identities and host-supplied grants."""
+
+    def __init__(self, connection: DuckDBPyConnection, layers: Mapping[LayerId, RegisteredLayer],
+                 authorize: Callable[[object, LayerId, str], bool]):
+        self._db = connection
+        self._authorize = authorize
+        self._layers = {}
+        for name, record in layers.items():
+            if type(name) is not LayerId or type(record) is not RegisteredLayer:
+                raise TypeError("expected LayerId keys and RegisteredLayer values")
+            if type(record.version) is not str or not record.version:
+                raise ValueError("provide a layer version")
+            layer = PointLayer(connection, record.relation, catalog=record.catalog,
+                               attributes=record.attributes, time_column=record.time_column)
+            self._layers[name] = (record.catalog, self._oid(record.catalog), record.version, layer)
+
+    def _oid(self, catalog):
+        row = self._db.execute("SELECT database_oid FROM duckdb_databases() WHERE database_name = ?",
+                               [catalog]).fetchone()
+        if row is None:
+            raise LookupError("registered catalog is unavailable")
+        return row[0]
+
+    def fetch(self, principal: object, layer_id: LayerId, viewport: Viewport, *,
+              zoom: int | None = None, where: FilterSpec | None = None,
+              time: TimeRange | None = None) -> tuple[str, list[MapPoint] | list[GridCell]]:
+        """Fetch one authorized layer version, rejecting a replaced catalog."""
+        if type(layer_id) is not LayerId:
+            raise TypeError("expected a LayerId")
+        layer_info = self._layers.get(layer_id)
+        if layer_info is None or not self._authorize(principal, layer_id, layer_info[2]):
+            raise PermissionError("layer is unavailable to this principal")
+        catalog, oid, version, layer = layer_info
+        if self._oid(catalog) != oid:
+            raise LookupError("registered catalog has changed")
+        result = (layer.fetch(viewport, where=where, time=time) if zoom is None
+                  else layer.fetch_at_zoom(viewport, zoom, where=where, time=time))
+        if self._oid(catalog) != oid:
+            raise LookupError("registered catalog has changed")
+        if not self._authorize(principal, layer_id, version):
+            raise PermissionError("layer is unavailable to this principal")
+        return version, result

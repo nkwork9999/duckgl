@@ -170,6 +170,8 @@ attributes are available and values are bound as query parameters. With a regist
 `polygon_statistics(ring, sum_attribute="population")` counts original WGS84 points inside or on a closed
 selection ring and sums one registered numeric attribute. The connection needs the spatial extension loaded.
 Split rings at the antimeridian before calling this method.
+`LayerRegistry` binds application-level `LayerId` values to explicit catalog, relation and version records.
+It checks the application's grant callback on every fetch and rejects registrations whose catalog was replaced.
 
 For a host application, load this version of DuckGL and spatial on a dedicated
 DuckDB connection. Create and commit a view in the primary database's main
