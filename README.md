@@ -204,6 +204,8 @@ For host-side point queries, register a WGS84 relation with unique `feature_id`,
 Use `GeometryLayer(connection, relation, source_crs=..., attributes=...)` for exact viewport selection
 from registered `feature_id` and `geometry` columns. The source CRS must be known. For a WGS84 shape
 that crosses the antimeridian, split the geometry on that line at ingest while keeping one feature ID.
+Use `fetch_clipped(viewport, buffer_degrees=...)` to return a display geometry trimmed to that extent
+and its optional buffer. Call `fetch(viewport)` for the complete WGS84 shape.
 `RegionalStatistics(connection, points, regions)` counts points in registered, same-CRS polygons.
 Choose `BoundaryAssignment.ALL_MATCHES` or `LOWEST_ID` for overlapping polygons and boundary points.
 The result includes zero-count regions, unmatched points and missing positions.

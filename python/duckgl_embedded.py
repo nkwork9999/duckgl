@@ -368,6 +368,32 @@ class GeometryLayer:
 
     def fetch(self, viewport: Viewport) -> list[GeometryFeature]:
         """Return each matching ID once, including shapes that touch an edge."""
+        return self._fetch(viewport, clip=False)
+
+    def fetch_clipped(self, viewport: Viewport, *, buffer_degrees: float = 0) -> list[GeometryFeature]:
+        """Return display geometry clipped to the viewport plus its optional angular buffer."""
+        if type(viewport) is not Viewport:
+            raise TypeError("expected a Viewport")
+        if type(buffer_degrees) not in (int, float) or not 0 <= buffer_degrees <= 45:
+            raise ValueError("buffer_degrees must be between 0 and 45")
+        if buffer_degrees:
+            width = viewport.east - viewport.west
+            if width < 0:
+                width += 360
+            if width + 2 * buffer_degrees >= 360:
+                west, east = -180.0, 180.0
+            else:
+                west = viewport.west - buffer_degrees
+                east = viewport.east + buffer_degrees
+                if west < -180:
+                    west += 360
+                if east > 180:
+                    east -= 360
+            viewport = Viewport(west, max(-90, viewport.south - buffer_degrees),
+                                east, min(90, viewport.north + buffer_degrees))
+        return self._fetch(viewport, clip=True)
+
+    def _fetch(self, viewport: Viewport, *, clip: bool) -> list[GeometryFeature]:
         if type(viewport) is not Viewport:
             raise TypeError("expected a Viewport")
         if viewport.west <= viewport.east:
@@ -396,6 +422,21 @@ class GeometryLayer:
                     AND EXISTS (SELECT 1 FROM candidate_bounds
                                 WHERE ST_Intersects_Extent(source.geometry, extent))
                 """
+        intersects = """SELECT shape FROM viewport_shapes
+                        WHERE ST_Intersects_Extent(features.geometry, shape)
+                          AND ST_Intersects(features.geometry, shape)"""
+        output_geometry = "features.geometry"
+        region_join = ""
+        selection = f"EXISTS ({intersects})"
+        if clip:
+            output_geometry = "display.geometry"
+            region_join = f"""
+                CROSS JOIN LATERAL (
+                    SELECT ST_Union_Agg(ST_Intersection(features.geometry, edge.shape)) AS geometry
+                    FROM ({intersects}) AS edge
+                ) AS display
+            """
+            selection = "display.geometry IS NOT NULL"
         rows = self._db.execute(f"""
             WITH boxes AS (
                 SELECT unnest(?::DOUBLE[]) AS west, unnest(?::DOUBLE[]) AS east,
@@ -409,11 +450,8 @@ class GeometryLayer:
                 SELECT source.feature_id, {geometry} AS geometry {fields} FROM {self._relation} AS source
                 WHERE source.geometry IS NOT NULL AND NOT ST_IsEmpty(source.geometry) {prescan}
             )
-            SELECT features.feature_id, ST_AsGeoJSON(features.geometry) {projected}
-            FROM features WHERE EXISTS (
-                SELECT 1 FROM viewport_shapes WHERE ST_Intersects_Extent(features.geometry, shape)
-                   AND ST_Intersects(features.geometry, shape)
-            )
+            SELECT features.feature_id, ST_AsGeoJSON({output_geometry}) {projected}
+            FROM features {region_join} WHERE {selection}
             ORDER BY features.feature_id
         """, parameters).fetchall()
         names = [key for key, _ in self._attributes]

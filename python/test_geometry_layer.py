@@ -37,3 +37,27 @@ class GeometryLayerTests(unittest.TestCase):
             self.assertAlmostEqual(hit.geometry["coordinates"][0], 140)
             self.assertAlmostEqual(hit.geometry["coordinates"][1], 35)
             self.assertEqual(layer.fetch(Viewport(-10, -10, 10, 10)), [])
+
+    def test_clip_with_buffer_preserves_original_polygon_and_wraps_at_dateline(self):
+        with duckdb.connect() as db:
+            db.load_extension("spatial")
+            db.execute("""
+                CREATE TABLE shapes AS SELECT * FROM (VALUES
+                    (1, ST_MakeEnvelope(176, -2, 180, 2)),
+                    (2, ST_GeomFromText('LINESTRING(-180 0,-176 0)')),
+                    (3, ST_MakeEnvelope(20, -1, 22, 1))
+                ) AS t(feature_id, geometry)
+            """)
+            layer = GeometryLayer(db, "shapes", source_crs="EPSG:4326")
+            extent = Viewport(178, -1, 179, 1)
+            polygon, line = layer.fetch_clipped(extent, buffer_degrees=2)
+            self.assertEqual((polygon.feature_id, line.feature_id), (1, 2))
+            self.assertEqual(sorted(p[0] for p in line.geometry["coordinates"]), [-180, -179])
+            clipped, = layer.fetch_clipped(extent)
+            original, = layer.fetch(extent)
+            def area(feature):
+                from json import dumps
+                return db.execute("SELECT ST_Area(ST_GeomFromGeoJSON(?))", [dumps(feature.geometry)]).fetchone()[0]
+            self.assertEqual((area(clipped), area(original)), (2, 16))
+            with self.assertRaises(ValueError):
+                layer.fetch_clipped(extent, buffer_degrees=-1)
