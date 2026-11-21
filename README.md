@@ -172,6 +172,11 @@ selection ring and sums one registered numeric attribute. The connection needs t
 Split rings at the antimeridian before calling this method.
 `LayerRegistry` binds application-level `LayerId` values to explicit catalog, relation and version records.
 It checks the application's grant callback on every fetch and rejects registrations whose catalog was replaced.
+`VectorTileLayer` encodes a registered EPSG:3857 geometry relation as a Mapbox Vector Tile. Give it a
+unique nonnegative integer `feature_id` column and the attributes to publish.
+`TileCache` bounds the number and bytes of cached tiles by tenant, layer, visibility, source version,
+projection and tile coordinates. Include the filter and tile format choices in the projection identity.
+The host supplies the current authorization callback and can omit the response body on an ETag match.
 
 For a host application, load this version of DuckGL and spatial on a dedicated
 DuckDB connection. Create and commit a view in the primary database's main

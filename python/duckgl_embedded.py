@@ -1,9 +1,13 @@
 """Host-side publication of a single GeoJSON snapshot on loopback."""
+from collections import OrderedDict
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
+from hashlib import sha256
+from json import dumps
 from math import isfinite
+from threading import Lock
 
 from duckdb import DuckDBPyConnection
 
@@ -350,3 +354,149 @@ class LayerRegistry:
         if not self._authorize(principal, layer_id, version):
             raise PermissionError("layer is unavailable to this principal")
         return version, result
+
+
+@dataclass(frozen=True)
+class TileId:
+    zoom: int
+    x: int
+    y: int
+
+    def __post_init__(self):
+        if type(self.zoom) is not int or not 0 <= self.zoom <= 22:
+            raise ValueError("zoom must be an integer in [0, 22]")
+        if any(type(value) is not int or not 0 <= value < 1 << self.zoom for value in (self.x, self.y)):
+            raise ValueError("tile coordinates are outside the zoom level")
+
+
+class VectorTileLayer:
+    """Encode a host-registered EPSG:3857 relation as Mapbox Vector Tiles."""
+
+    def __init__(self, connection: DuckDBPyConnection, relation: str, layer_name: str, *,
+                 attributes: Mapping[str, str] | None = None, catalog: str | None = None):
+        self._db = connection
+        if type(layer_name) is not str or not layer_name or "\0" in layer_name:
+            raise ValueError("layer_name must be a nonempty string without NUL")
+        self._name = layer_name
+        schema = "main" if catalog is None else f"{_identifier(catalog)}.main"
+        self._relation = f"{schema}.{_identifier(relation)}"
+        attrs = dict(attributes or {})
+        aliases = {"feature_id", "geometry"}
+        projected = []
+        for alias, column in attrs.items():
+            name = _identifier(alias)
+            if alias.casefold() in aliases:
+                raise ValueError("attribute names must be distinct and avoid reserved fields")
+            aliases.add(alias.casefold())
+            projected.append(f"source.{_identifier(column)} AS {name}")
+        self._attributes = "".join(", " + item for item in projected)
+
+    def fetch(self, tile: TileId, *, buffer: int = 256) -> bytes:
+        """Return an empty tile as zero bytes. Buffer size is in tile coordinates."""
+        if type(tile) is not TileId:
+            raise TypeError("expected a TileId")
+        if type(buffer) is not int or not 0 <= buffer <= 4096:
+            raise ValueError("buffer must be an integer in [0, 4096]")
+        result, = self._db.execute(f"""
+            WITH envelope AS (
+                SELECT ST_Extent(ST_TileEnvelope(?, ?, ?)) AS extent, ?::BIGINT AS padding
+            ), coverage AS (
+                SELECT extent, padding, (ST_XMax(extent) - ST_XMin(extent)) * padding / 4096.0 AS overscan
+                FROM envelope
+            ), clipped AS MATERIALIZED (
+                SELECT source.feature_id,
+                       ST_AsMVTGeom(source.geometry, tile.extent, 4096, ?::BIGINT, true) AS geometry
+                       {self._attributes}
+                FROM {self._relation} AS source CROSS JOIN coverage AS tile
+                WHERE source.feature_id >= 0 AND ST_Intersects_Extent(source.geometry,
+                    ST_MakeEnvelope(ST_XMin(tile.extent) - overscan, ST_YMin(tile.extent) - overscan,
+                                    ST_XMax(tile.extent) + overscan, ST_YMax(tile.extent) + overscan))
+            )
+            SELECT CASE WHEN count(*) = 0 THEN ''::BLOB
+                        ELSE ST_AsMVT(features, ?, 4096, 'geometry', 'feature_id') END
+            FROM (SELECT * FROM clipped WHERE geometry IS NOT NULL AND NOT ST_IsEmpty(geometry)
+                  ORDER BY feature_id) AS features
+        """, [tile.zoom, tile.x, tile.y, buffer, buffer, self._name]).fetchone()
+        return result
+
+
+@dataclass(frozen=True)
+class TileScope:
+    """Host-supplied cache identity for a tenant's authorized tile projection."""
+
+    tenant: str
+    layer: str
+    visibility: str
+    version: str | None
+    projection: str
+
+    def __post_init__(self):
+        required = (self.tenant, self.layer, self.visibility, self.projection)
+        if any(type(value) is not str or not value for value in required):
+            raise ValueError("tenant, layer, visibility and projection must be nonempty strings")
+        if self.version is not None and (type(self.version) is not str or not self.version):
+            raise ValueError("version must be a nonempty string or None")
+
+
+@dataclass(frozen=True)
+class TileResponse:
+    body: bytes | None
+    etag: str | None
+    not_modified: bool
+
+
+class TileCache:
+    """An LRU of immutable tiles with byte and entry limits."""
+
+    def __init__(self, *, max_entries: int, max_bytes: int):
+        if any(type(value) is not int or value <= 0 for value in (max_entries, max_bytes)):
+            raise ValueError("cache limits must be positive integers")
+        self._max_entries = max_entries
+        self._max_bytes = max_bytes
+        self._entries = OrderedDict()
+        self._size = 0
+        self._lock = Lock()
+
+    def fetch(self, scope: TileScope, tile: TileId, generate: Callable[[], bytes], *,
+              authorize: Callable[[TileScope], bool], if_none_match: str | None = None) -> TileResponse:
+        """Resolve a tile under current grants and omit its body on an exact ETag match."""
+        if type(scope) is not TileScope or type(tile) is not TileId:
+            raise TypeError("expected a TileScope and TileId")
+        if if_none_match is not None and type(if_none_match) is not str:
+            raise TypeError("if_none_match must be an ETag string")
+        if not authorize(scope):
+            raise PermissionError("tile is unavailable to this principal")
+        key = scope, tile
+        cached = None
+        if scope.version is not None:
+            with self._lock:
+                cached = self._entries.get(key)
+                if cached is not None:
+                    self._entries.move_to_end(key)
+
+        if cached is None:
+            body = generate()
+            if type(body) is not bytes:
+                raise TypeError("tile generator must return bytes")
+            if not authorize(scope):
+                raise PermissionError("tile is unavailable to this principal")
+            if scope.version is None:
+                return TileResponse(body, None, False)
+            identity = dumps((scope.tenant, scope.layer, scope.visibility, scope.version, scope.projection,
+                              tile.zoom, tile.x, tile.y), separators=(",", ":")).encode()
+            etag = '"' + sha256(identity + b"\0" + body).hexdigest() + '"'
+            if len(body) <= self._max_bytes:
+                with self._lock:
+                    prior = self._entries.pop(key, None)
+                    if prior is not None:
+                        self._size -= len(prior[0])
+                    self._entries[key] = body, etag
+                    self._size += len(body)
+                    while self._size > self._max_bytes or len(self._entries) > self._max_entries:
+                        _, (removed, _) = self._entries.popitem(last=False)
+                        self._size -= len(removed)
+        else:
+            body, etag = cached
+        if etag == if_none_match:
+            return TileResponse(None, etag, True)
+        return TileResponse(body, etag, False)
