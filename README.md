@@ -163,6 +163,14 @@ from the workspace/API, so bind it only to an interface you intend to expose.
 
 ## Embedded GeoJSON layer
 
+A host can register optional `AttributeColumn` values when constructing a `PointLayer`. Pass a tree of
+`AttributeFilter`, `AllOf` and `AnyOf` nodes as the `where` argument to point or grid queries. Only registered
+attributes are available and values are bound as query parameters. With a registered `TIMESTAMPTZ` column,
+`time=TimeRange(start, end)` filters absolute instants in a half-open interval.
+`polygon_statistics(ring, sum_attribute="population")` counts original WGS84 points inside or on a closed
+selection ring and sums one registered numeric attribute. The connection needs the spatial extension loaded.
+Split rings at the antimeridian before calling this method.
+
 For a host application, load this version of DuckGL and spatial on a dedicated
 DuckDB connection. Create and commit a view in the primary database's main
 schema with a WGS84 column named `geometry` and only the public properties.
